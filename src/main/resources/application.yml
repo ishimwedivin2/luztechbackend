@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: "Luz Technology System"
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/luz
+    username: postgres
+    password: 123
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ishimwedivin2@gmail.com
+    password: gjxj lkxb wjtv houp
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:YOUR_GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET:YOUR_GOOGLE_CLIENT_SECRET}
+
+jwt:
+  secret: "7LI8l4wM3yNszu01xGh9o7QK/fSIwNYAyYV5vw3IZD+Zy/CEXtEkFLUFY3qfmVIdT4kiLraInqnndzlHMDGC0g=="
+  expirationMs: 86400000 # 24 hours
+  refreshExpirationMs: 2592000000 # 30 days
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+payment:
+  mode: mock
+
+file:
+  upload-dir: "uploads"
+

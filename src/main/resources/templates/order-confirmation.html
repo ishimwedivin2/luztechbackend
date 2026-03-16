@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Order Confirmation</title>
+</head>
+<body>
+    <h2>Thank you for your order!</h2>
+    <p>Hi <span th:text="${customerName}"></span>,</p>
+    <p>Your order <strong><span th:text="${orderNumber}"></span></strong> has been successfully placed and paid.</p>
+    <p>Total amount: <strong>$<span th:text="${totalAmount}"></span></strong></p>
+    <p>We will notify you once it ships!</p>
+    <br/>
+    <p>Best Regards,</p>
+    <p>Luz Technology Team</p>
+</body>
+</html>
