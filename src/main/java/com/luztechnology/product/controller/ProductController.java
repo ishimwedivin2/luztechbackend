@@ -25,8 +25,13 @@ public class ProductController {
     private final FileStorageService fileStorageService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Product>>> getAllProducts() {
-        return ResponseEntity.ok(ApiResponse.success(productService.getAllProducts()));
+    public ResponseEntity<ApiResponse<java.util.List<com.luztechnology.product.dto.ProductResponse>>> getAllProducts() {
+        return ResponseEntity.ok(ApiResponse.success(productService.getAllProductsDto()));
+    }
+
+    @GetMapping("/_test")
+    public ResponseEntity<ApiResponse<String>> testEndpoint() {
+        return ResponseEntity.ok(ApiResponse.success("ok"));
     }
 
     @GetMapping("/categories")
@@ -40,7 +45,7 @@ public class ProductController {
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) java.math.BigDecimal minPrice,
             @RequestParam(required = false) java.math.BigDecimal maxPrice,
-            @RequestParam(required = false, defaultValue = "ACTIVE") ProductStatus status) {
+            @RequestParam(required = false) ProductStatus status) {
 
         List<Product> products = productService.searchProducts(name, categoryId, minPrice, maxPrice, status);
         return ResponseEntity.ok(ApiResponse.success("Search results retrieved", products));

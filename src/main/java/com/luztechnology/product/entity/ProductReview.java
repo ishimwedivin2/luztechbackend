@@ -3,6 +3,7 @@ package com.luztechnology.product.entity;
 import com.luztechnology.common.entity.BaseEntity;
 import com.luztechnology.user.entity.User;
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.*;
 
 @Entity
@@ -16,6 +17,7 @@ public class ProductReview extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
+    @JsonIgnore
     private Product product;
 
     @ManyToOne(fetch = FetchType.LAZY)

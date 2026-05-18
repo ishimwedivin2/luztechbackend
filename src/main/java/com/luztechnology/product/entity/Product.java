@@ -2,6 +2,7 @@ package com.luztechnology.product.entity;
 
 import com.luztechnology.common.entity.BaseEntity;
 import com.luztechnology.inventory.entity.InventoryItem;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -16,8 +17,8 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Product extends BaseEntity {
-
     @Column(nullable = false)
     private String name;
 

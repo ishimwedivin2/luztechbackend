@@ -32,6 +32,26 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
+    public java.util.List<com.luztechnology.product.dto.ProductResponse> getAllProductsDto() {
+        return productRepository.findAll().stream().map(this::toDto).toList();
+    }
+
+    private com.luztechnology.product.dto.ProductResponse toDto(Product p) {
+        java.util.List<String> imageUrls = p.getImages() == null ? java.util.List.of() : p.getImages().stream().map(i -> i.getUrl()).toList();
+        return com.luztechnology.product.dto.ProductResponse.builder()
+                .id(p.getId())
+                .name(p.getName())
+                .description(p.getDescription())
+                .price(p.getPrice())
+                .sku(p.getSku())
+                .status(p.getStatus())
+                .categoryId(p.getCategory() == null ? null : p.getCategory().getId())
+                .categoryName(p.getCategory() == null ? null : p.getCategory().getName())
+                .images(imageUrls)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
     public List<Category> getAllCategories() {
         return categoryRepository.findAll();
     }
