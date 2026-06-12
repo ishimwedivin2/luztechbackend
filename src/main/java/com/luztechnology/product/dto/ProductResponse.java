@@ -25,5 +25,5 @@ public class ProductResponse {
     private ProductStatus status;
     private UUID categoryId;
     private String categoryName;
-    private List<String> images;
+    private List<ProductImageResponse> images;
 }

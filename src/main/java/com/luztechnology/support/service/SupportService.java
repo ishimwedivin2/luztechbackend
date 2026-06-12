@@ -135,4 +135,9 @@ public class SupportService {
     public List<SupportMessage> getTicketMessages(UUID ticketId) {
         return messageRepository.findByTicketIdOrderByCreatedAtAsc(ticketId);
     }
+
+    public SupportTicket getTicketById(UUID ticketId) {
+        return ticketRepository.findById(ticketId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
+    }
 }

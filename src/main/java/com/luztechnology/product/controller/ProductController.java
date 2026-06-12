@@ -120,6 +120,15 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success("Discount applied", productService.applyDiscount(id, discountId)));
     }
 
+    @PatchMapping("/{id}/remove-image/{imageId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<Product>> removeProductImage(
+            @PathVariable UUID id,
+            @PathVariable UUID imageId) {
+        return ResponseEntity.ok(ApiResponse.success("Image removed",
+                productService.removeImageFromProduct(id, imageId)));
+    }
+
     @PostMapping("/{id}/images")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<ProductImage>> uploadProductImage(

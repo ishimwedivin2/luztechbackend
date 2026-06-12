@@ -10,6 +10,7 @@ import com.luztechnology.product.repository.DiscountRepository;
 import com.luztechnology.product.repository.ProductRepository;
 import com.luztechnology.product.entity.ProductImage;
 import com.luztechnology.product.repository.ProductImageRepository;
+import com.luztechnology.common.service.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,7 @@ public class ProductService {
     private final CategoryRepository categoryRepository;
     private final DiscountRepository discountRepository;
     private final ProductImageRepository productImageRepository;
+    private final FileStorageService fileStorageService;
 
     @Transactional(readOnly = true)
     public List<Product> getAllProducts() {
@@ -37,7 +39,9 @@ public class ProductService {
     }
 
     private com.luztechnology.product.dto.ProductResponse toDto(Product p) {
-        java.util.List<String> imageUrls = p.getImages() == null ? java.util.List.of() : p.getImages().stream().map(i -> i.getUrl()).toList();
+        java.util.List<com.luztechnology.product.dto.ProductImageResponse> images = p.getImages() == null
+                ? java.util.List.of()
+                : p.getImages().stream().map(this::toImageDto).toList();
         return com.luztechnology.product.dto.ProductResponse.builder()
                 .id(p.getId())
                 .name(p.getName())
@@ -47,7 +51,16 @@ public class ProductService {
                 .status(p.getStatus())
                 .categoryId(p.getCategory() == null ? null : p.getCategory().getId())
                 .categoryName(p.getCategory() == null ? null : p.getCategory().getName())
-                .images(imageUrls)
+                .images(images)
+                .build();
+    }
+
+    private com.luztechnology.product.dto.ProductImageResponse toImageDto(ProductImage image) {
+        return com.luztechnology.product.dto.ProductImageResponse.builder()
+                .id(image.getId())
+                .url(image.getUrl())
+                .altText(image.getAltText())
+                .isPrimary(image.isPrimary())
                 .build();
     }
 
@@ -151,6 +164,28 @@ public class ProductService {
 
         return productImageRepository.save(image);
     }
+
+    @Transactional
+    public Product removeImageFromProduct(UUID productId, UUID imageId) {
+        Product product = getProductById(productId);
+        ProductImage image = productImageRepository.findByIdAndProductId(imageId, productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Image not found for this product"));
+
+        boolean wasPrimary = image.isPrimary();
+        fileStorageService.deleteFile(image.getUrl());
+        product.getImages().remove(image);
+        productImageRepository.delete(image);
+
+        if (wasPrimary) {
+            product.getImages().stream().findFirst().ifPresent(next -> {
+                next.setPrimary(true);
+                productImageRepository.save(next);
+            });
+        }
+
+        return product;
+    }
+
     @Transactional
     public void deleteProduct(UUID id) {
         Product product = getProductById(id);

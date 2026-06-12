@@ -13,6 +13,7 @@ import com.luztechnology.user.entity.User;
 import com.luztechnology.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -54,6 +55,22 @@ public class SupportController {
     public ResponseEntity<ApiResponse<List<SupportTicket>>> getAllTickets() {
         List<SupportTicket> tickets = supportService.getAllTickets();
         return ResponseEntity.ok(ApiResponse.success("All tickets retrieved", tickets));
+    }
+
+    @GetMapping("/tickets/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'CUSTOMER')")
+    public ResponseEntity<ApiResponse<SupportTicket>> getTicket(
+            @AuthenticationPrincipal UserDetailsImpl userDetails,
+            @PathVariable UUID id) {
+        SupportTicket ticket = supportService.getTicketById(id);
+        User user = getCurrentUser(userDetails);
+        boolean isStaff = userDetails.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
+                        || "ROLE_SUPPORT_AGENT".equals(a.getAuthority()));
+        if (!isStaff && !ticket.getCustomer().getId().equals(user.getId())) {
+            throw new AccessDeniedException("You do not have access to this ticket");
+        }
+        return ResponseEntity.ok(ApiResponse.success("Ticket retrieved", ticket));
     }
 
     @GetMapping("/tickets/{id}/messages")

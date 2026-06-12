@@ -15,7 +15,6 @@ import java.time.LocalDate;
 import java.math.BigDecimal;
 import com.luztechnology.order.repository.OrderRepository;
 import com.luztechnology.support.repository.SupportTicketRepository;
-import com.luztechnology.academy.repository.EnrollmentRepository;
 import com.luztechnology.user.repository.UserRepository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,7 +27,6 @@ public class CRMService {
     private final com.luztechnology.notification.service.MailService mailService;
     private final OrderRepository orderRepository;
     private final SupportTicketRepository ticketRepository;
-    private final EnrollmentRepository enrollmentRepository;
     private final UserRepository userRepository;
 
     public CustomerProfile getProfileByCustomerId(UUID customerId) {
@@ -49,7 +47,6 @@ public class CRMService {
         summary.put("profile", getProfileByCustomerId(customerId));
         summary.put("orders", orderRepository.findByCustomerId(customerId));
         summary.put("tickets", ticketRepository.findByCustomerIdOrderByCreatedAtDesc(customerId));
-        summary.put("enrollments", enrollmentRepository.findByEmail(user.getEmail()));
 
         return summary;
     }
