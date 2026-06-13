@@ -49,7 +49,15 @@ springdoc:
     path: /swagger-ui.html
 
 payment:
-  mode: mock
+  mode: real
+  mtn:
+    collection-subscription-key: ${MTN_COLLECTION_SUBSCRIPTION_KEY:92e6db6f6608475abd87bd376ea3b7d2}
+    disbursement-subscription-key: ${MTN_DISBURSEMENT_SUBSCRIPTION_KEY:b7432425cdb54cf9badf0ce7fab4e120}
+    api-user: ${MTN_API_USER:}
+    api-key: ${MTN_API_KEY:}
+    target-environment: ${MTN_TARGET_ENVIRONMENT:sandbox}
+    base-url: ${MTN_BASE_URL:https://sandbox.momodeveloper.mtn.com}
+    callback-host: ${MTN_CALLBACK_HOST:localhost}
 
 file:
   upload-dir: "uploads"

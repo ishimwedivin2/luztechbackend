@@ -74,9 +74,10 @@ public class WebSecurityConfig {
                     .requestMatchers("/api/products", "/api/products/**").permitAll()
                     .requestMatchers("/uploads/**").permitAll()
                     .requestMatchers("/ws", "/ws/**").permitAll()
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/actuator/**").hasRole("ADMIN")
-                        .anyRequest().authenticated())
+                    .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                    .requestMatchers("/api/payments/webhook/**", "/api/payments/mtn/**").permitAll()
+                    .requestMatchers("/actuator/**").hasRole("ADMIN")
+                    .anyRequest().authenticated())
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
                         .successHandler(oAuth2LoginSuccessHandler));
