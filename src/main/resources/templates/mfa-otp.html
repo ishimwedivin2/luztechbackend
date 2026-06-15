@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Login Verification Code</title>
+</head>
+<body>
+    <h2>Login verification code</h2>
+    <p>Hi <span th:text="${name}"></span>,</p>
+    <p>Use this code to finish signing in to your Luz Technology account:</p>
+    <h1 th:text="${code}"></h1>
+    <p>This code expires in <strong><span th:text="${expirationMinutes}"></span> minutes</strong>.</p>
+    <p>If you did not try to log in, please ignore this email.</p>
+    <br/>
+    <p>Best Regards,</p>
+    <p>Luz Technology Team</p>
+</body>
+</html>

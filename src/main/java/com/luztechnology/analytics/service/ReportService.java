@@ -80,9 +80,13 @@ public class ReportService {
 
         // Order Info
         document.add(new Paragraph("Order Reference: " + order.getOrderNumber(), fontParagraph));
-        document.add(new Paragraph("Customer: " + order.getCustomer().getFirstName() + " " + order.getCustomer().getLastName(), fontParagraph));
+        String customerName = order.getCustomer() == null
+                ? "Walk-in customer"
+                : order.getCustomer().getFirstName() + " " + order.getCustomer().getLastName();
+        document.add(new Paragraph("Customer: " + customerName, fontParagraph));
         document.add(new Paragraph("Date: " + order.getCreatedAt().toLocalDate().toString(), fontParagraph));
         document.add(new Paragraph("Payment Status: " + order.getStatus().name(), fontParagraph));
+        document.add(new Paragraph("Tax: $" + nullToZero(order.getTaxAmount()), fontParagraph));
 
         document.add(new Paragraph(" "));
 
@@ -117,5 +121,9 @@ public class ReportService {
         PdfPCell cell = new PdfPCell(new Phrase(text, FontFactory.getFont(FontFactory.HELVETICA_BOLD)));
         cell.setHorizontalAlignment(Element.ALIGN_CENTER);
         return cell;
+    }
+
+    private java.math.BigDecimal nullToZero(java.math.BigDecimal value) {
+        return value == null ? java.math.BigDecimal.ZERO : value;
     }
 }

@@ -1,14 +1,19 @@
 package com.luztechnology.order.service;
 
 import com.luztechnology.common.exception.ResourceNotFoundException;
+import com.luztechnology.inventory.service.InventoryService;
+import com.luztechnology.finance.service.TaxService;
 import com.luztechnology.order.dto.OrderRequestDTO;
 import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.entity.OrderItem;
 import com.luztechnology.order.entity.OrderStatus;
 import com.luztechnology.order.repository.OrderRepository;
+import com.luztechnology.product.entity.Product;
+import com.luztechnology.product.entity.ProductStatus;
 import com.luztechnology.product.repository.ProductRepository;
 import com.luztechnology.user.repository.UserRepository;
 import com.luztechnology.security.services.UserDetailsImpl;
+import com.luztechnology.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -29,6 +34,8 @@ public class OrderService {
     private final UserRepository userRepository;
     private final com.luztechnology.notification.service.NotificationService notificationService;
     private final com.luztechnology.crm.service.CRMService crmService;
+    private final InventoryService inventoryService;
+    private final TaxService taxService;
 
     @Transactional(readOnly = true)
     public List<Order> getAllOrders() {
@@ -51,28 +58,90 @@ public class OrderService {
         UserDetailsImpl userDetails = (UserDetailsImpl) SecurityContextHolder.getContext().getAuthentication()
                 .getPrincipal();
 
+        User customer = userRepository.findById(userDetails.getId()).orElseThrow();
+        return processOrderForCustomer(customer, request);
+    }
+
+    @Transactional
+    public Order processOrderForCustomer(User customer, OrderRequestDTO request) {
+        return createOrderFromRequest(request, customer, null, OrderStatus.PENDING, "ONLINE", null);
+    }
+
+    @Transactional
+    public Order processPosOrder(OrderRequestDTO request, User cashier, User customer, String paymentReference) {
+        return createOrderFromRequest(request, customer, cashier, OrderStatus.PAID, "POS", paymentReference);
+    }
+
+    private Order createOrderFromRequest(
+            OrderRequestDTO request,
+            User customer,
+            User cashier,
+            OrderStatus status,
+            String orderChannel,
+            String paymentReference) {
+
         Order order = Order.builder()
                 .orderNumber("LUZ-" + System.currentTimeMillis())
-                .customer(userRepository.findById(userDetails.getId()).orElseThrow())
-                .status(OrderStatus.PENDING)
-                .totalAmount(request.getTotalAmount())
+                .customer(customer)
+                .cashier(cashier)
+                .status(status)
+                .subTotalAmount(BigDecimal.ZERO)
+                .taxAmount(BigDecimal.ZERO)
+                .taxRate(taxService.getTaxRate())
+                .totalAmount(BigDecimal.ZERO)
                 .shippingAddress(request.getShippingAddress())
+                .billingAddress(request.getBillingAddress())
                 .paymentMethod(request.getPaymentMethod())
+                .paymentReference(paymentReference)
+                .orderChannel(orderChannel)
                 .build();
 
         List<OrderItem> items = request.getItems().stream().map(dto -> {
+            Product product = productRepository.findById(dto.getProductId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + dto.getProductId()));
+            if (product.getStatus() != ProductStatus.ACTIVE) {
+                throw new IllegalStateException("Product is not available for purchase: " + product.getName());
+            }
+            BigDecimal unitPrice = product.getPrice();
             OrderItem item = OrderItem.builder()
                     .order(order)
-                    .product(productRepository.findById(dto.getProductId()).orElseThrow())
+                    .product(product)
                     .quantity(dto.getQuantity())
-                    .unitPrice(dto.getUnitPrice())
-                    .subTotal(dto.getUnitPrice().multiply(BigDecimal.valueOf(dto.getQuantity())))
+                    .unitPrice(unitPrice)
+                    .subTotal(unitPrice.multiply(BigDecimal.valueOf(dto.getQuantity())))
                     .build();
+            reduceInventoryIfLinked(product, dto.getQuantity(), order.getOrderNumber());
             return item;
         }).collect(Collectors.toList());
 
         order.setOrderItems(items);
-        return orderRepository.save(order);
+        BigDecimal subTotal = items.stream()
+                .map(OrderItem::getSubTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal taxAmount = taxService.calculateTax(subTotal);
+
+        order.setSubTotalAmount(subTotal);
+        order.setTaxAmount(taxAmount);
+        order.setTotalAmount(subTotal.add(taxAmount));
+
+        Order savedOrder = orderRepository.save(order);
+        if (savedOrder.getStatus() == OrderStatus.PAID) {
+            taxService.recordTaxForPaidOrder(savedOrder);
+        }
+        return savedOrder;
+    }
+
+    private void reduceInventoryIfLinked(Product product, Integer quantity, String orderNumber) {
+        if (product.getInventoryItem() == null) {
+            return;
+        }
+
+        inventoryService.adjustStock(
+                product.getInventoryItem().getId(),
+                -quantity,
+                "Sale completed",
+                "SALE",
+                orderNumber);
     }
 
     @Transactional
@@ -90,12 +159,18 @@ public class OrderService {
         order.setStatus(newStatus);
         Order savedOrder = orderRepository.save(order);
 
-        // Notify via WebSocket and persistence
-        notificationService.sendOrderStatusUpdate(savedOrder.getCustomer(), savedOrder.getId(), newStatus.name());
+        // Notify online customers via WebSocket and persistence.
+        if (savedOrder.getCustomer() != null) {
+            notificationService.sendOrderStatusUpdate(savedOrder.getCustomer(), savedOrder.getId(), newStatus.name());
+        }
 
         // If PAID, update CRM profile
-        if (newStatus == OrderStatus.PAID) {
+        if (newStatus == OrderStatus.PAID && savedOrder.getCustomer() != null) {
             crmService.updateCustomerProfile(savedOrder.getCustomer().getId(), savedOrder.getTotalAmount());
+        }
+
+        if (newStatus == OrderStatus.PAID) {
+            taxService.recordTaxForPaidOrder(savedOrder);
         }
 
         return savedOrder;

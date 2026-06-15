@@ -2,6 +2,8 @@ package com.luztechnology.auth.controller;
 
 import com.luztechnology.auth.dto.*;
 import com.luztechnology.auth.entity.RefreshToken;
+import com.luztechnology.auth.service.MfaService;
+import com.luztechnology.auth.service.PasswordResetService;
 import com.luztechnology.auth.service.RefreshTokenService;
 import com.luztechnology.common.dto.ApiResponse;
 import com.luztechnology.security.jwt.JwtUtils;
@@ -34,6 +36,8 @@ public class AuthController {
     private final PasswordEncoder encoder;
     private final JwtUtils jwtUtils;
     private final RefreshTokenService refreshTokenService;
+    private final PasswordResetService passwordResetService;
+    private final MfaService mfaService;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
@@ -41,28 +45,22 @@ public class AuthController {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword()));
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-        String jwt = jwtUtils.generateJwtToken(authentication);
-
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
-        List<String> roles = userDetails.getAuthorities().stream()
-                .map(item -> item.getAuthority())
-                .collect(Collectors.toList());
+        User user = userRepository.findById(userDetails.getId()).orElseThrow();
+        String mfaToken = mfaService.createAndSendOtp(user);
 
-        RefreshToken refreshToken = refreshTokenService.createRefreshToken(userDetails.getId());
-
-        AuthResponse authResponse = AuthResponse.builder()
-                .token(jwt)
-                .refreshToken(refreshToken.getToken())
+        AuthResponse mfaResponse = AuthResponse.builder()
                 .id(userDetails.getId().toString())
                 .email(userDetails.getEmail())
-                .firstName(userRepository.findById(userDetails.getId()).get().getFirstName())
-                .lastName(userRepository.findById(userDetails.getId()).get().getLastName())
-                .roles(roles)
-                .type("Bearer")
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .roles(getRolesFromAuthentication(authentication))
+                .mfaRequired(true)
+                .mfaToken(mfaToken)
                 .build();
 
-        return ResponseEntity.ok(ApiResponse.success("User logged in successfully", authResponse));
+        SecurityContextHolder.clearContext();
+        return ResponseEntity.ok(ApiResponse.success("MFA verification required", mfaResponse));
     }
 
     @PostMapping("/register")
@@ -92,6 +90,35 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("User registered successfully!", null));
     }
 
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<String>> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest forgotPasswordRequest) {
+        passwordResetService.requestPasswordReset(forgotPasswordRequest.getEmail());
+        return ResponseEntity.ok(ApiResponse.success(
+                "If an account exists for this email, a password reset link has been sent.",
+                null));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<String>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest resetPasswordRequest) {
+        passwordResetService.resetPassword(
+                resetPasswordRequest.getToken(),
+                resetPasswordRequest.getNewPassword());
+        return ResponseEntity.ok(ApiResponse.success("Password reset successfully", null));
+    }
+
+    @PostMapping("/mfa/verify")
+    public ResponseEntity<ApiResponse<AuthResponse>> verifyMfa(
+            @Valid @RequestBody MfaVerificationRequest mfaVerificationRequest) {
+        User user = mfaService.verifyOtp(
+                mfaVerificationRequest.getMfaToken(),
+                mfaVerificationRequest.getCode());
+
+        AuthResponse authResponse = buildAuthResponse(user);
+        return ResponseEntity.ok(ApiResponse.success("User logged in successfully", authResponse));
+    }
+
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<TokenRefreshResponse>> refreshtoken(@Valid @RequestBody TokenRefreshRequest request) {
         String requestRefreshToken = request.getRefreshToken();
@@ -111,5 +138,30 @@ public class AuthController {
         UserDetailsImpl userDetails = (UserDetailsImpl) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         refreshTokenService.deleteByUserId(userDetails.getId());
         return ResponseEntity.ok(ApiResponse.success("Log out successful", null));
+    }
+
+    private AuthResponse buildAuthResponse(User user) {
+        String jwt = jwtUtils.generateTokenFromEmail(user.getEmail());
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getId());
+
+        return AuthResponse.builder()
+                .token(jwt)
+                .refreshToken(refreshToken.getToken())
+                .id(user.getId().toString())
+                .email(user.getEmail())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .roles(user.getRoles().stream()
+                        .map(Role::getName)
+                        .collect(Collectors.toList()))
+                .type("Bearer")
+                .mfaRequired(false)
+                .build();
+    }
+
+    private List<String> getRolesFromAuthentication(Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .map(item -> item.getAuthority())
+                .collect(Collectors.toList());
     }
 }

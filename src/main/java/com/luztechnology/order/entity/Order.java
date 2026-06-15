@@ -22,12 +22,22 @@ public class Order extends BaseEntity {
     private String orderNumber;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id", nullable = false)
+    @JoinColumn(name = "customer_id")
     private User customer;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cashier_id")
+    private User cashier;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private OrderStatus status;
+
+    private BigDecimal subTotalAmount;
+
+    private BigDecimal taxAmount;
+
+    private BigDecimal taxRate;
 
     @Column(nullable = false)
     private BigDecimal totalAmount;
@@ -37,7 +47,11 @@ public class Order extends BaseEntity {
 
     private String billingAddress;
     private String paymentReference;
-    private String paymentMethod; 
+    private String paymentMethod;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private String orderChannel = "ONLINE";
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

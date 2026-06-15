@@ -8,6 +8,7 @@ import java.util.List;
 public class OrderRequestDTO {
     private List<OrderItemDTO> items;
     private String shippingAddress;
+    private String billingAddress;
     private BigDecimal totalAmount;
     private String paymentMethod;
 
