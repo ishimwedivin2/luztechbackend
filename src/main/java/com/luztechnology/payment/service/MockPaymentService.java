@@ -4,12 +4,14 @@ import com.luztechnology.notification.service.MailService;
 import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.entity.OrderStatus;
 import com.luztechnology.order.service.OrderService;
+import com.luztechnology.payment.dto.PaymentRefundResult;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -63,5 +65,31 @@ public class MockPaymentService implements PaymentService {
     public boolean verifyWebhook(String payload, String signature) {
         logger.info("[MOCK MODE] Auto verifying webhook payload.");
         return true;
+    }
+
+    @Override
+    public PaymentRefundResult refund(Order order, BigDecimal amount, String reason) {
+        String refundReference = "MOCK_REFUND_" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        logger.info("[MOCK MODE] Refunding order {} amount {} with ref {}", order.getId(), amount, refundReference);
+        return PaymentRefundResult.builder()
+                .provider("MOCK_PAYMENT")
+                .refundReference(refundReference)
+                .status("SUCCESSFUL")
+                .successful(true)
+                .pending(false)
+                .message("Mock refund completed")
+                .build();
+    }
+
+    @Override
+    public PaymentRefundResult getRefundStatus(String refundReference) {
+        return PaymentRefundResult.builder()
+                .provider("MOCK_PAYMENT")
+                .refundReference(refundReference)
+                .status("SUCCESSFUL")
+                .successful(true)
+                .pending(false)
+                .message("Mock refund completed")
+                .build();
     }
 }

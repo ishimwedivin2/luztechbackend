@@ -1,6 +1,9 @@
 package com.luztechnology.payment.service;
 
 import com.luztechnology.order.entity.Order;
+import com.luztechnology.payment.dto.PaymentRefundResult;
+
+import java.math.BigDecimal;
 
 public interface PaymentService {
     /**
@@ -18,4 +21,16 @@ public interface PaymentService {
      * @return boolean true if verified/paid successfully
      */
     boolean verifyWebhook(String payload, String signature);
+
+    default boolean supportsRefund(String paymentMethod) {
+        return supports(paymentMethod);
+    }
+
+    default PaymentRefundResult refund(Order order, BigDecimal amount, String reason) {
+        throw new UnsupportedOperationException("Refunds are not supported for this payment provider");
+    }
+
+    default PaymentRefundResult getRefundStatus(String refundReference) {
+        throw new UnsupportedOperationException("Refund status checks are not supported for this payment provider");
+    }
 }

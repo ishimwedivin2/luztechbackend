@@ -12,6 +12,8 @@ public class ProfitLossResponse {
     private LocalDate startDate;
     private LocalDate endDate;
     private BigDecimal salesRevenue;
+    private BigDecimal refunds;
+    private BigDecimal netSales;
     private BigDecimal taxCollected;
     private BigDecimal operatingExpenses;
     private BigDecimal grossProfit;

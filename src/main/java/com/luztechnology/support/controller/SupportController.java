@@ -3,6 +3,7 @@ package com.luztechnology.support.controller;
 import com.luztechnology.common.dto.ApiResponse;
 import com.luztechnology.common.exception.ResourceNotFoundException;
 import com.luztechnology.security.services.UserDetailsImpl;
+import com.luztechnology.support.dto.AssignTicketRequest;
 import com.luztechnology.support.dto.MessageRequest;
 import com.luztechnology.support.dto.SurveyRequest;
 import com.luztechnology.support.dto.TicketRequest;
@@ -11,6 +12,7 @@ import com.luztechnology.support.entity.SupportTicket;
 import com.luztechnology.support.service.SupportService;
 import com.luztechnology.user.entity.User;
 import com.luztechnology.user.repository.UserRepository;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -52,9 +54,20 @@ public class SupportController {
 
     @GetMapping("/tickets")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT')")
-    public ResponseEntity<ApiResponse<List<SupportTicket>>> getAllTickets() {
-        List<SupportTicket> tickets = supportService.getAllTickets();
+    public ResponseEntity<ApiResponse<List<SupportTicket>>> getAllTickets(
+            @RequestParam(required = false) String status) {
+        List<SupportTicket> tickets = status == null
+                ? supportService.getAllTickets()
+                : supportService.getAllTicketsByStatus(status.toUpperCase());
         return ResponseEntity.ok(ApiResponse.success("All tickets retrieved", tickets));
+    }
+
+    @GetMapping("/tickets/assigned")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<List<SupportTicket>>> getAssignedTickets(
+            @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        List<SupportTicket> tickets = supportService.getAssignedTickets(userDetails.getId());
+        return ResponseEntity.ok(ApiResponse.success("Assigned tickets retrieved", tickets));
     }
 
     @GetMapping("/tickets/{id}")
@@ -91,6 +104,15 @@ public class SupportController {
         User user = getCurrentUser(userDetails);
         SupportMessage message = supportService.addMessage(ticket, user, request.getMessage());
         return ResponseEntity.ok(ApiResponse.success("Message added", message));
+    }
+
+    @PatchMapping("/tickets/{id}/assign")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT')")
+    public ResponseEntity<ApiResponse<SupportTicket>> assignTicket(
+            @PathVariable UUID id,
+            @Valid @RequestBody AssignTicketRequest request) {
+        SupportTicket ticket = supportService.assignTicket(id, request.getAgentId());
+        return ResponseEntity.ok(ApiResponse.success("Ticket assigned", ticket));
     }
 
     @PatchMapping("/tickets/{id}/close")

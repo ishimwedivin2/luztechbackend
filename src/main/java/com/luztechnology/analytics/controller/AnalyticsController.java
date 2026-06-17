@@ -39,6 +39,36 @@ public class AnalyticsController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getDashboard() {
         return ResponseEntity
-                .ok(ApiResponse.success("Financial Dashboard Retrieved", analyticsService.getFinancialDashboard()));
+                .ok(ApiResponse.success("Dashboard retrieved", analyticsService.getFinancialDashboard()));
+    }
+
+    @GetMapping("/dashboard/kpis")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getKpiDashboard(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok(ApiResponse.success("KPI dashboard retrieved",
+                analyticsService.getKpiDashboard(startDate, endDate)));
+    }
+
+    @GetMapping("/customers")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getCustomerAnalytics() {
+        return ResponseEntity.ok(ApiResponse.success("Customer analytics retrieved",
+                analyticsService.getCustomerAnalytics()));
+    }
+
+    @GetMapping("/inventory")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getInventoryAnalytics() {
+        return ResponseEntity.ok(ApiResponse.success("Inventory analytics retrieved",
+                analyticsService.getInventoryAnalytics()));
+    }
+
+    @GetMapping("/support")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT')")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getSupportAnalytics() {
+        return ResponseEntity.ok(ApiResponse.success("Support analytics retrieved",
+                analyticsService.getSupportAnalytics()));
     }
 }

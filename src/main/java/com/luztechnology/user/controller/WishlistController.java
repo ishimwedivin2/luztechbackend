@@ -1,6 +1,7 @@
 package com.luztechnology.user.controller;
 
 import com.luztechnology.common.dto.ApiResponse;
+import com.luztechnology.product.entity.Product;
 import com.luztechnology.security.services.UserDetailsImpl;
 import com.luztechnology.user.entity.User;
 import com.luztechnology.user.entity.WishlistItem;
@@ -51,5 +52,12 @@ public class WishlistController {
     @GetMapping("/check/{productId}")
     public ResponseEntity<ApiResponse<Boolean>> checkWishlist(@PathVariable UUID productId) {
         return ResponseEntity.ok(ApiResponse.success(wishlistService.isInWishlist(getCurrentUser(), productId)));
+    }
+
+    @GetMapping("/recommendations")
+    public ResponseEntity<ApiResponse<List<Product>>> getRecommendations(
+            @RequestParam(defaultValue = "10") int limit) {
+        return ResponseEntity.ok(ApiResponse.success("Recommendations retrieved",
+                wishlistService.getRecommendations(getCurrentUser(), limit)));
     }
 }

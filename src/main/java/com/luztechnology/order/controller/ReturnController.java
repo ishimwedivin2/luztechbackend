@@ -4,6 +4,7 @@ import com.luztechnology.common.dto.ApiResponse;
 import com.luztechnology.common.exception.ResourceNotFoundException;
 import com.luztechnology.order.dto.CompleteReturnRequest;
 import com.luztechnology.order.dto.CreateReturnRequest;
+import com.luztechnology.order.dto.RefundReturnRequest;
 import com.luztechnology.order.dto.ReviewReturnRequest;
 import com.luztechnology.order.entity.ReturnRequest;
 import com.luztechnology.order.service.ReturnService;
@@ -81,6 +82,26 @@ public class ReturnController {
             @RequestBody(required = false) ReviewReturnRequest request) {
         String notes = request == null ? null : request.getAdminNotes();
         return ResponseEntity.ok(ApiResponse.success("Return rejected", returnService.rejectReturn(id, notes)));
+    }
+
+    @PostMapping("/{id}/refund")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<ReturnRequest>> refundReturn(
+            @PathVariable UUID id,
+            @RequestBody(required = false) RefundReturnRequest request) {
+        RefundReturnRequest body = request == null ? new RefundReturnRequest() : request;
+        ReturnRequest returnRequest = returnService.initiateRefund(
+                id,
+                body.getRefundedAmount(),
+                body.getAdminNotes());
+        return ResponseEntity.ok(ApiResponse.success("Refund submitted to payment provider", returnRequest));
+    }
+
+    @PostMapping("/{id}/refund/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<ReturnRequest>> syncRefundStatus(@PathVariable UUID id) {
+        ReturnRequest returnRequest = returnService.syncRefundStatus(id);
+        return ResponseEntity.ok(ApiResponse.success("Refund status synced", returnRequest));
     }
 
     @PostMapping("/{id}/complete")

@@ -8,6 +8,8 @@ import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,6 +44,18 @@ public class TaxController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ResponseEntity.ok(ApiResponse.success(taxService.getTaxSummary(startDate, endDate)));
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportTaxRecords(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        byte[] report = taxService.exportTaxRecordsCsv(startDate, endDate);
+        String filename = "tax-records-" + startDate + "-to-" + endDate + ".csv";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .body(report);
     }
 
     @PostMapping("/orders/{orderId}/record")

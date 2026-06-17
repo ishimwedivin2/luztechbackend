@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -86,5 +87,34 @@ public class TaxService {
                 .totalRecords(records.size())
                 .status(PENDING_STATUS)
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] exportTaxRecordsCsv(LocalDate startDate, LocalDate endDate) {
+        StringBuilder csv = new StringBuilder();
+        csv.append("Tax Type,Order Number,Reference ID,Tax Date,Filing Date,Taxable Amount,Tax Rate,Tax Amount,Status\n");
+        for (TaxRecord record : getTaxRecords(startDate, endDate)) {
+            csv.append(csvValue(record.getTaxType())).append(',')
+                    .append(csvValue(record.getOrderNumber())).append(',')
+                    .append(csvValue(record.getReferenceId())).append(',')
+                    .append(csvValue(record.getTaxDate())).append(',')
+                    .append(csvValue(record.getFilingDate())).append(',')
+                    .append(csvValue(record.getTaxableAmount())).append(',')
+                    .append(csvValue(record.getTaxRate())).append(',')
+                    .append(csvValue(record.getAmount())).append(',')
+                    .append(csvValue(record.getStatus())).append('\n');
+        }
+        return csv.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private String csvValue(Object value) {
+        if (value == null) {
+            return "";
+        }
+        String text = value.toString();
+        if (text.contains(",") || text.contains("\"") || text.contains("\n")) {
+            return "\"" + text.replace("\"", "\"\"") + "\"";
+        }
+        return text;
     }
 }

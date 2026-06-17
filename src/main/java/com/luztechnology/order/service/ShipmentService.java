@@ -62,6 +62,9 @@ public class ShipmentService {
         if (order.getStatus() == OrderStatus.CANCELLED || order.getStatus() == OrderStatus.REFUNDED) {
             throw new IllegalStateException("Cannot ship a cancelled or refunded order");
         }
+        if (order.getStatus() == OrderStatus.PAID || order.getStatus() == OrderStatus.CREATED) {
+            orderService.updateOrderStatus(order.getId(), OrderStatus.PROCESSING);
+        }
 
         Shipment shipment = Shipment.builder()
                 .order(order)

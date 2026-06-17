@@ -7,6 +7,8 @@ import com.luztechnology.order.entity.OrderItem;
 import com.luztechnology.order.entity.OrderStatus;
 import com.luztechnology.order.entity.ReturnRequest;
 import com.luztechnology.order.repository.ReturnRequestRepository;
+import com.luztechnology.payment.dto.PaymentRefundResult;
+import com.luztechnology.payment.service.PaymentService;
 import com.luztechnology.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,11 +26,14 @@ public class ReturnService {
     private static final String PENDING = "PENDING";
     private static final String APPROVED = "APPROVED";
     private static final String REJECTED = "REJECTED";
+    private static final String REFUND_PENDING = "REFUND_PENDING";
+    private static final String REFUND_FAILED = "REFUND_FAILED";
     private static final String COMPLETED = "COMPLETED";
 
     private final ReturnRequestRepository returnRequestRepository;
     private final OrderService orderService;
     private final InventoryService inventoryService;
+    private final List<PaymentService> paymentServices;
 
     @Transactional(readOnly = true)
     public List<ReturnRequest> getReturns(String status) {
@@ -96,6 +101,69 @@ public class ReturnService {
     }
 
     @Transactional
+    public ReturnRequest initiateRefund(UUID id, BigDecimal refundedAmount, String adminNotes) {
+        ReturnRequest returnRequest = getReturnById(id);
+        if (!APPROVED.equalsIgnoreCase(returnRequest.getStatus())) {
+            throw new IllegalStateException("Only approved return requests can be refunded");
+        }
+
+        Order order = returnRequest.getOrder();
+        if (order.getPaymentMethod() == null || order.getPaymentMethod().isBlank()) {
+            throw new IllegalStateException("Order has no payment method for provider refund");
+        }
+
+        BigDecimal finalRefundAmount = refundedAmount == null ? returnRequest.getRequestedAmount() : refundedAmount;
+        PaymentService paymentService = paymentServices.stream()
+                .filter(service -> service.supportsRefund(order.getPaymentMethod()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Refunds are not supported for payment method: " + order.getPaymentMethod()));
+
+        PaymentRefundResult result = paymentService.refund(order, finalRefundAmount, returnRequest.getReason());
+        returnRequest.setRefundProvider(result.getProvider());
+        returnRequest.setRefundReference(result.getRefundReference());
+        returnRequest.setRefundStatus(result.getStatus());
+        returnRequest.setRefundedAmount(finalRefundAmount);
+        returnRequest.setAdminNotes(adminNotes);
+        returnRequest.setRefundRequestedAt(LocalDateTime.now());
+
+        if (result.isSuccessful()) {
+            completeSuccessfulRefund(returnRequest, finalRefundAmount);
+        } else if (result.isPending()) {
+            returnRequest.setStatus(REFUND_PENDING);
+        } else {
+            returnRequest.setStatus(REFUND_FAILED);
+        }
+
+        return returnRequestRepository.save(returnRequest);
+    }
+
+    @Transactional
+    public ReturnRequest syncRefundStatus(UUID id) {
+        ReturnRequest returnRequest = getReturnById(id);
+        if (returnRequest.getRefundProvider() == null || returnRequest.getRefundReference() == null) {
+            throw new IllegalStateException("Return request does not have a provider refund to check");
+        }
+
+        PaymentService paymentService = paymentServices.stream()
+                .filter(service -> service.supportsRefund(returnRequest.getRefundProvider()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Refund status is not supported for provider: " + returnRequest.getRefundProvider()));
+
+        PaymentRefundResult result = paymentService.getRefundStatus(returnRequest.getRefundReference());
+        returnRequest.setRefundStatus(result.getStatus());
+
+        if (result.isSuccessful()) {
+            completeSuccessfulRefund(returnRequest, returnRequest.getRefundedAmount());
+        } else if (result.isPending()) {
+            returnRequest.setStatus(REFUND_PENDING);
+        } else {
+            returnRequest.setStatus(REFUND_FAILED);
+        }
+
+        return returnRequestRepository.save(returnRequest);
+    }
+
+    @Transactional
     public ReturnRequest completeReturn(UUID id, BigDecimal refundedAmount, String refundReference, String adminNotes) {
         ReturnRequest returnRequest = getReturnById(id);
         if (!APPROVED.equalsIgnoreCase(returnRequest.getStatus())) {
@@ -103,18 +171,28 @@ public class ReturnService {
         }
 
         BigDecimal finalRefundAmount = refundedAmount == null ? returnRequest.getRequestedAmount() : refundedAmount;
-        restockOrderItems(returnRequest.getOrder());
-
         returnRequest.setStatus(COMPLETED);
         returnRequest.setRefundedAmount(finalRefundAmount);
         returnRequest.setRefundReference(refundReference == null || refundReference.isBlank()
                 ? generateRefundReference(returnRequest.getOrder())
                 : refundReference);
+        returnRequest.setRefundProvider("MANUAL");
+        returnRequest.setRefundStatus("SUCCESSFUL");
         returnRequest.setAdminNotes(adminNotes);
-        returnRequest.setCompletedAt(LocalDateTime.now());
+        completeSuccessfulRefund(returnRequest, finalRefundAmount);
 
-        orderService.updateOrderStatus(returnRequest.getOrder().getId(), OrderStatus.REFUNDED);
         return returnRequestRepository.save(returnRequest);
+    }
+
+    private void completeSuccessfulRefund(ReturnRequest returnRequest, BigDecimal refundedAmount) {
+        if (!COMPLETED.equalsIgnoreCase(returnRequest.getStatus())) {
+            restockOrderItems(returnRequest.getOrder());
+        }
+        returnRequest.setStatus(COMPLETED);
+        returnRequest.setRefundStatus("SUCCESSFUL");
+        returnRequest.setRefundedAmount(refundedAmount);
+        returnRequest.setCompletedAt(LocalDateTime.now());
+        orderService.updateOrderStatus(returnRequest.getOrder().getId(), OrderStatus.REFUNDED);
     }
 
     private void validateOrderCanBeReturned(Order order) {

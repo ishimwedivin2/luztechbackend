@@ -4,6 +4,7 @@ import com.luztechnology.common.dto.ApiResponse;
 import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.entity.OrderStatus;
 import com.luztechnology.order.service.OrderService;
+import com.luztechnology.payment.service.PaymentReconciliationService;
 import com.luztechnology.payment.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -23,6 +24,7 @@ public class PaymentWebhookController {
 
     private final List<PaymentService> paymentServices;
     private final OrderService orderService;
+    private final PaymentReconciliationService reconciliationService;
 
     @PostMapping("/initiate/{orderId}")
     public ResponseEntity<ApiResponse<String>> initiatePayment(
@@ -38,10 +40,9 @@ public class PaymentWebhookController {
 
         String paymentReference = selectedService.initiatePayment(order);
         
-        // Save the payment reference logic on order
-        order.setPaymentReference(paymentReference);
-        order.setPaymentMethod(paymentMethod);
+        order = orderService.updatePaymentDetails(orderId, paymentMethod, paymentReference);
         orderService.updateOrderStatus(orderId, OrderStatus.PROCESSING); // Or keep it CREATED until webhook
+        reconciliationService.recordInitiated(order, paymentMethod, paymentReference);
         
         return ResponseEntity.ok(ApiResponse.success("Payment initiated", paymentReference));
     }
@@ -62,10 +63,12 @@ public class PaymentWebhookController {
 
         if (isVerified) {
             orderService.updateOrderStatus(orderId, OrderStatus.PAID);
+            reconciliationService.recordWebhook(orderService.getOrderById(orderId), provider, true);
             logger.info("Order {} marked as PAID successfully after {} webhook", orderId, provider);
             // Handle invoice generation and emailing 
             return ResponseEntity.ok(ApiResponse.success("Webhook processed successfully", null));
         } else {
+            reconciliationService.recordWebhook(orderService.getOrderById(orderId), provider, false);
             logger.error("Failed to verify webhook payload for provider {}", provider);
             return ResponseEntity.badRequest().body(ApiResponse.error("Invalid webhook signature or payload"));
         }

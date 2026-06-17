@@ -1,11 +1,14 @@
 package com.luztechnology.finance.controller;
 
 import com.luztechnology.common.dto.ApiResponse;
+import com.luztechnology.finance.dto.FinancialManagementResponse;
 import com.luztechnology.finance.dto.FinanceSummaryResponse;
 import com.luztechnology.finance.dto.ProfitLossResponse;
 import com.luztechnology.finance.service.FinanceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,5 +41,27 @@ public class FinanceController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ResponseEntity.ok(ApiResponse.success("Profit/loss report retrieved",
                 financeService.getProfitLoss(startDate, endDate)));
+    }
+
+    @GetMapping("/management")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<FinancialManagementResponse>> getFinancialManagement(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok(ApiResponse.success("Financial management report retrieved",
+                financeService.getFinancialManagement(startDate, endDate)));
+    }
+
+    @GetMapping("/management/export")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<byte[]> exportFinancialManagement(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        byte[] report = financeService.exportFinancialManagementCsv(startDate, endDate);
+        String filename = "financial-management-" + startDate + "-to-" + endDate + ".csv";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .body(report);
     }
 }

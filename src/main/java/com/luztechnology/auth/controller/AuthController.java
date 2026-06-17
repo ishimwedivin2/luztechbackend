@@ -1,7 +1,11 @@
 package com.luztechnology.auth.controller;
 
+import com.luztechnology.admin.entity.SecuritySettings;
+import com.luztechnology.admin.service.SecuritySettingsService;
 import com.luztechnology.auth.dto.*;
 import com.luztechnology.auth.entity.RefreshToken;
+import com.luztechnology.auth.entity.LoginAttempt;
+import com.luztechnology.auth.repository.LoginAttemptRepository;
 import com.luztechnology.auth.service.MfaService;
 import com.luztechnology.auth.service.PasswordResetService;
 import com.luztechnology.auth.service.RefreshTokenService;
@@ -22,6 +26,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -38,15 +43,38 @@ public class AuthController {
     private final RefreshTokenService refreshTokenService;
     private final PasswordResetService passwordResetService;
     private final MfaService mfaService;
+    private final SecuritySettingsService securitySettingsService;
+    private final LoginAttemptRepository loginAttemptRepository;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
+        SecuritySettings settings = securitySettingsService.getSettings();
+        User existingUser = userRepository.findByEmail(loginRequest.getEmail()).orElse(null);
+        if (existingUser != null && existingUser.isLocked()) {
+            throw new IllegalStateException("User account is locked. Contact an administrator.");
+        }
 
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword()));
+        Authentication authentication;
+        try {
+            authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword()));
+        } catch (RuntimeException ex) {
+            recordLoginAttempt(loginRequest.getEmail(), false, ex.getMessage());
+            lockUserIfThresholdReached(loginRequest.getEmail(), settings);
+            throw new IllegalArgumentException("Invalid email or password");
+        }
 
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         User user = userRepository.findById(userDetails.getId()).orElseThrow();
+        recordLoginAttempt(user.getEmail(), true, null);
+        user.setLastLoginDate(LocalDateTime.now());
+        userRepository.save(user);
+
+        if (!settings.isMfaRequired()) {
+            AuthResponse authResponse = buildAuthResponse(user);
+            return ResponseEntity.ok(ApiResponse.success("User logged in successfully", authResponse));
+        }
+
         String mfaToken = mfaService.createAndSendOtp(user);
 
         AuthResponse mfaResponse = AuthResponse.builder()
@@ -70,6 +98,7 @@ public class AuthController {
                     .badRequest()
                     .body(ApiResponse.error("Error: Email is already in use!"));
         }
+        securitySettingsService.validatePassword(signUpRequest.getPassword());
 
         User user = User.builder()
                 .firstName(signUpRequest.getFirstName())
@@ -163,5 +192,28 @@ public class AuthController {
         return authentication.getAuthorities().stream()
                 .map(item -> item.getAuthority())
                 .collect(Collectors.toList());
+    }
+
+    private void recordLoginAttempt(String email, boolean success, String failureReason) {
+        loginAttemptRepository.save(LoginAttempt.builder()
+                .email(email)
+                .ipAddress("UNKNOWN")
+                .success(success)
+                .failureReason(failureReason)
+                .build());
+    }
+
+    private void lockUserIfThresholdReached(String email, SecuritySettings settings) {
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            return;
+        }
+        LocalDateTime windowStart = LocalDateTime.now().minusMinutes(settings.getLockoutDurationMinutes());
+        long failedAttempts = loginAttemptRepository
+                .countByEmailIgnoreCaseAndSuccessFalseAndCreatedAtAfter(email, windowStart);
+        if (failedAttempts >= settings.getMaxFailedLoginAttempts()) {
+            user.setLocked(true);
+            userRepository.save(user);
+        }
     }
 }

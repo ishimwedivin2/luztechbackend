@@ -1,6 +1,7 @@
 package com.luztechnology.order.controller;
 
 import com.luztechnology.common.dto.ApiResponse;
+import com.luztechnology.order.dto.OrderTrackingResponse;
 import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.entity.OrderStatus;
 import com.luztechnology.order.service.OrderService;
@@ -29,6 +30,12 @@ public class OrderController {
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<Order>> getOrderById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(orderService.getOrderById(id)));
+    }
+
+    @GetMapping("/{id}/tracking")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
+    public ResponseEntity<ApiResponse<OrderTrackingResponse>> getOrderTracking(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success("Order tracking retrieved", orderService.getOrderTracking(id)));
     }
 
     @GetMapping("/customer/{customerId}")

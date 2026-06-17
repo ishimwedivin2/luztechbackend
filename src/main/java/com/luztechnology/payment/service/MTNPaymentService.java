@@ -3,6 +3,7 @@ package com.luztechnology.payment.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luztechnology.order.entity.Order;
+import com.luztechnology.payment.dto.PaymentRefundResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.math.BigDecimal;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
@@ -47,6 +49,8 @@ public class MTNPaymentService implements PaymentService {
     // Cache dynamic apiUser and apiKey for session if not configured in application.yml
     private String activeApiUser;
     private String activeApiKey;
+    private String activeDisbursementApiUser;
+    private String activeDisbursementApiKey;
 
     public MTNPaymentService(WebClient webClient, ObjectMapper objectMapper) {
         this.webClient = webClient;
@@ -160,6 +164,96 @@ public class MTNPaymentService implements PaymentService {
         }
     }
 
+    @Override
+    public PaymentRefundResult refund(Order order, BigDecimal amount, String reason) {
+        if (order.getPaymentReference() == null || order.getPaymentReference().isBlank()) {
+            throw new IllegalStateException("Order does not have a payment reference to refund");
+        }
+        if (disbursementSubscriptionKey == null || disbursementSubscriptionKey.isBlank()) {
+            throw new IllegalStateException("MTN disbursement subscription key is missing");
+        }
+
+        try {
+            ensureDisbursementApiCredentials();
+            String token = getAccessToken(activeDisbursementApiUser, activeDisbursementApiKey,
+                    disbursementSubscriptionKey, "/disbursement/token/");
+            String refundReference = UUID.randomUUID().toString();
+            String currency = "sandbox".equalsIgnoreCase(targetEnvironment) ? "EUR" : "RWF";
+
+            Map<String, Object> body = new HashMap<>();
+            body.put("amount", amount.toPlainString());
+            body.put("currency", currency);
+            body.put("externalId", "RF-" + order.getOrderNumber());
+            body.put("referenceIdToRefund", order.getPaymentReference());
+            body.put("payerMessage", reason == null || reason.isBlank() ? "Order refund" : reason);
+            body.put("payeeNote", "Refund for order " + order.getOrderNumber());
+
+            webClient.post()
+                    .uri(baseUrl + "/disbursement/v2_0/refund")
+                    .header("Authorization", "Bearer " + token)
+                    .header("X-Reference-Id", refundReference)
+                    .header("X-Target-Environment", targetEnvironment)
+                    .header("Ocp-Apim-Subscription-Key", disbursementSubscriptionKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .toBodilessEntity()
+                    .block();
+
+            return PaymentRefundResult.builder()
+                    .provider("MTN_MOMO")
+                    .refundReference(refundReference)
+                    .status("PENDING")
+                    .successful(false)
+                    .pending(true)
+                    .message("MTN refund accepted and awaiting provider confirmation")
+                    .build();
+        } catch (Exception e) {
+            logger.error("Failed to initiate MTN refund for order {}", order.getId(), e);
+            throw new RuntimeException("MTN refund initiation failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public PaymentRefundResult getRefundStatus(String refundReference) {
+        if (refundReference == null || refundReference.isBlank()) {
+            throw new IllegalArgumentException("Refund reference is required");
+        }
+
+        try {
+            ensureDisbursementApiCredentials();
+            String token = getAccessToken(activeDisbursementApiUser, activeDisbursementApiKey,
+                    disbursementSubscriptionKey, "/disbursement/token/");
+
+            JsonNode response = webClient.get()
+                    .uri(baseUrl + "/disbursement/v1_0/refund/" + refundReference)
+                    .header("Authorization", "Bearer " + token)
+                    .header("X-Target-Environment", targetEnvironment)
+                    .header("Ocp-Apim-Subscription-Key", disbursementSubscriptionKey)
+                    .retrieve()
+                    .bodyToMono(JsonNode.class)
+                    .block();
+
+            String status = response != null && response.has("status")
+                    ? response.get("status").asText()
+                    : "UNKNOWN";
+            boolean successful = "SUCCESSFUL".equalsIgnoreCase(status);
+            boolean pending = "PENDING".equalsIgnoreCase(status);
+
+            return PaymentRefundResult.builder()
+                    .provider("MTN_MOMO")
+                    .refundReference(refundReference)
+                    .status(status)
+                    .successful(successful)
+                    .pending(pending)
+                    .message(response == null ? null : response.toString())
+                    .build();
+        } catch (Exception e) {
+            logger.error("Failed to check MTN refund status {}", refundReference, e);
+            throw new RuntimeException("MTN refund status check failed: " + e.getMessage(), e);
+        }
+    }
+
     public synchronized void ensureApiCredentials(String subscriptionKey) {
         if (activeApiUser != null && activeApiKey != null) {
             return;
@@ -176,6 +270,24 @@ public class MTNPaymentService implements PaymentService {
         Map<String, String> credentials = provisionApiUserAndKey(subscriptionKey);
         this.activeApiUser = credentials.get("apiUser");
         this.activeApiKey = credentials.get("apiKey");
+    }
+
+    private synchronized void ensureDisbursementApiCredentials() {
+        if (activeDisbursementApiUser != null && activeDisbursementApiKey != null) {
+            return;
+        }
+        if (configuredApiUser != null && !configuredApiUser.trim().isEmpty() &&
+            configuredApiKey != null && !configuredApiKey.trim().isEmpty()) {
+            activeDisbursementApiUser = configuredApiUser;
+            activeDisbursementApiKey = configuredApiKey;
+            logger.info("Using configured MTN MoMo disbursement API User: {}", activeDisbursementApiUser);
+            return;
+        }
+
+        logger.info("MTN MoMo disbursement credentials not configured. Provisioning dynamic sandbox API User and Key...");
+        Map<String, String> credentials = provisionApiUserAndKey(disbursementSubscriptionKey);
+        this.activeDisbursementApiUser = credentials.get("apiUser");
+        this.activeDisbursementApiKey = credentials.get("apiKey");
     }
 
     public Map<String, String> provisionApiUserAndKey(String subscriptionKey) {

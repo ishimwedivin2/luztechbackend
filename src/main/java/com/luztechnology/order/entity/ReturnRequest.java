@@ -29,7 +29,10 @@ public class ReturnRequest extends BaseEntity {
     private BigDecimal requestedAmount;
     private BigDecimal refundedAmount;
     private String refundReference;
+    private String refundProvider;
+    private String refundStatus;
     private String adminNotes;
     private LocalDateTime approvedAt;
+    private LocalDateTime refundRequestedAt;
     private LocalDateTime completedAt;
 }

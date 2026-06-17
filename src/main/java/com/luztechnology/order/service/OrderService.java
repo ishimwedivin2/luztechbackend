@@ -4,10 +4,16 @@ import com.luztechnology.common.exception.ResourceNotFoundException;
 import com.luztechnology.inventory.service.InventoryService;
 import com.luztechnology.finance.service.TaxService;
 import com.luztechnology.order.dto.OrderRequestDTO;
+import com.luztechnology.order.dto.OrderTrackingEventResponse;
+import com.luztechnology.order.dto.OrderTrackingResponse;
 import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.entity.OrderItem;
 import com.luztechnology.order.entity.OrderStatus;
+import com.luztechnology.order.entity.OrderTrackingEvent;
+import com.luztechnology.order.entity.Shipment;
 import com.luztechnology.order.repository.OrderRepository;
+import com.luztechnology.order.repository.OrderTrackingEventRepository;
+import com.luztechnology.order.repository.ShipmentRepository;
 import com.luztechnology.product.entity.Product;
 import com.luztechnology.product.entity.ProductStatus;
 import com.luztechnology.product.repository.ProductRepository;
@@ -36,6 +42,8 @@ public class OrderService {
     private final com.luztechnology.crm.service.CRMService crmService;
     private final InventoryService inventoryService;
     private final TaxService taxService;
+    private final OrderTrackingEventRepository trackingEventRepository;
+    private final ShipmentRepository shipmentRepository;
 
     @Transactional(readOnly = true)
     public List<Order> getAllOrders() {
@@ -125,6 +133,7 @@ public class OrderService {
         order.setTotalAmount(subTotal.add(taxAmount));
 
         Order savedOrder = orderRepository.save(order);
+        recordTrackingEvent(savedOrder, savedOrder.getStatus(), buildTrackingNote(savedOrder.getStatus()));
         if (savedOrder.getStatus() == OrderStatus.PAID) {
             taxService.recordTaxForPaidOrder(savedOrder);
         }
@@ -150,14 +159,20 @@ public class OrderService {
             order.setOrderNumber("LUZ-TEMP-" + UUID.randomUUID().toString().substring(0, 8));
         }
         order.setStatus(OrderStatus.CREATED);
-        return orderRepository.save(order);
+        Order savedOrder = orderRepository.save(order);
+        recordTrackingEvent(savedOrder, savedOrder.getStatus(), buildTrackingNote(savedOrder.getStatus()));
+        return savedOrder;
     }
 
     @Transactional
     public Order updateOrderStatus(UUID id, OrderStatus newStatus) {
         Order order = getOrderById(id);
+        OrderStatus oldStatus = order.getStatus();
         order.setStatus(newStatus);
         Order savedOrder = orderRepository.save(order);
+        if (oldStatus != newStatus) {
+            recordTrackingEvent(savedOrder, newStatus, buildTrackingNote(newStatus));
+        }
 
         // Notify online customers via WebSocket and persistence.
         if (savedOrder.getCustomer() != null) {
@@ -177,12 +192,71 @@ public class OrderService {
     }
 
     @Transactional
+    public Order updatePaymentDetails(UUID id, String paymentMethod, String paymentReference) {
+        Order order = getOrderById(id);
+        order.setPaymentMethod(paymentMethod);
+        order.setPaymentReference(paymentReference);
+        return orderRepository.save(order);
+    }
+
+    @Transactional
     public Order cancelOrder(UUID id) {
         Order order = getOrderById(id);
         if (order.getStatus() == OrderStatus.SHIPPED || order.getStatus() == OrderStatus.DELIVERED) {
             throw new IllegalStateException("Cannot cancel an order that has already been shipped or delivered.");
         }
         order.setStatus(OrderStatus.CANCELLED);
-        return orderRepository.save(order);
+        Order savedOrder = orderRepository.save(order);
+        recordTrackingEvent(savedOrder, OrderStatus.CANCELLED, buildTrackingNote(OrderStatus.CANCELLED));
+        return savedOrder;
+    }
+
+    @Transactional(readOnly = true)
+    public OrderTrackingResponse getOrderTracking(UUID id) {
+        Order order = getOrderById(id);
+        Shipment shipment = shipmentRepository.findByOrderId(order.getId()).orElse(null);
+        List<OrderTrackingEventResponse> timeline = trackingEventRepository.findByOrderIdOrderByCreatedAtAsc(order.getId())
+                .stream()
+                .map(event -> OrderTrackingEventResponse.builder()
+                        .status(event.getStatus())
+                        .note(event.getNote())
+                        .occurredAt(event.getCreatedAt())
+                        .build())
+                .toList();
+
+        return OrderTrackingResponse.builder()
+                .orderId(order.getId())
+                .orderNumber(order.getOrderNumber())
+                .currentStatus(order.getStatus())
+                .trackingNumber(shipment == null ? null : shipment.getTrackingNumber())
+                .carrier(shipment == null ? null : shipment.getCarrier())
+                .shipmentStatus(shipment == null ? null : shipment.getStatus())
+                .estimatedDeliveryDate(shipment == null ? null : shipment.getEstimatedDeliveryDate())
+                .actualDeliveryDate(shipment == null ? null : shipment.getActualDeliveryDate())
+                .timeline(timeline)
+                .build();
+    }
+
+    private void recordTrackingEvent(Order order, OrderStatus status, String note) {
+        trackingEventRepository.save(OrderTrackingEvent.builder()
+                .order(order)
+                .status(status)
+                .note(note)
+                .build());
+    }
+
+    private String buildTrackingNote(OrderStatus status) {
+        return switch (status) {
+            case PENDING -> "Order received and awaiting payment";
+            case CREATED -> "Order created";
+            case PAID -> "Payment confirmed";
+            case PROCESSING -> "Order is being prepared";
+            case SHIPPED -> "Order has shipped";
+            case DELIVERED -> "Order delivered";
+            case CANCELLED -> "Order cancelled";
+            case RETURN_REQUESTED -> "Return requested";
+            case RETURNED -> "Order returned";
+            case REFUNDED -> "Refund completed";
+        };
     }
 }

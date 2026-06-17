@@ -76,6 +76,13 @@ public class SupportService {
 
         User agent = userRepository.findById(agentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Agent not found"));
+        boolean canHandleSupport = agent.getRoles().stream()
+                .anyMatch(role -> "ROLE_SUPPORT_AGENT".equals(role.getName())
+                        || "ROLE_ADMIN".equals(role.getName())
+                        || "ROLE_EMPLOYEE".equals(role.getName()));
+        if (!canHandleSupport) {
+            throw new IllegalArgumentException("Assigned user must be an admin, employee, or support agent");
+        }
 
         ticket.setAssignedAgent(agent);
         ticket.setStatus("IN_PROGRESS");
@@ -130,6 +137,10 @@ public class SupportService {
 
     public List<SupportTicket> getAllTicketsByStatus(String status) {
         return ticketRepository.findByStatus(status);
+    }
+
+    public List<SupportTicket> getAssignedTickets(UUID agentId) {
+        return ticketRepository.findByAssignedAgentId(agentId);
     }
 
     public List<SupportMessage> getTicketMessages(UUID ticketId) {

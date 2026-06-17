@@ -1,5 +1,6 @@
 package com.luztechnology.auth.service;
 
+import com.luztechnology.admin.service.SecuritySettingsService;
 import com.luztechnology.auth.entity.PasswordResetToken;
 import com.luztechnology.auth.repository.PasswordResetTokenRepository;
 import com.luztechnology.notification.service.MailService;
@@ -23,6 +24,7 @@ public class PasswordResetService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
+    private final SecuritySettingsService securitySettingsService;
 
     @Value("${app.password-reset.expiration-minutes:30}")
     private long passwordResetExpirationMinutes;
@@ -61,6 +63,7 @@ public class PasswordResetService {
 
     @Transactional
     public void resetPassword(String token, String newPassword) {
+        securitySettingsService.validatePassword(newPassword);
         PasswordResetToken passwordResetToken = passwordResetTokenRepository.findByToken(token)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid password reset token"));
 
