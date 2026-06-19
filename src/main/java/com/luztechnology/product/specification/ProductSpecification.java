@@ -33,4 +33,8 @@ public class ProductSpecification {
     public static Specification<Product> hasStatus(ProductStatus status) {
         return (root, query, cb) -> status == null ? null : cb.equal(root.get("status"), status);
     }
+
+    public static Specification<Product> isFeatured(Boolean featured) {
+        return (root, query, cb) -> featured == null ? null : cb.equal(root.get("featured"), featured);
+    }
 }

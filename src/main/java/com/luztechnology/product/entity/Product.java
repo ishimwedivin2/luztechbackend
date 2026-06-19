@@ -58,4 +58,8 @@ public class Product extends BaseEntity {
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<ProductReview> reviews = new ArrayList<>();
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean featured = false;
 }

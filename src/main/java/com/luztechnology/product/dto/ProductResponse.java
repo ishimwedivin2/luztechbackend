@@ -26,4 +26,7 @@ public class ProductResponse {
     private UUID categoryId;
     private String categoryName;
     private List<ProductImageResponse> images;
+    private boolean featured;
+    private BigDecimal discountPercentage;
+    private String discountName;
 }

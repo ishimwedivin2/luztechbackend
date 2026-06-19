@@ -15,6 +15,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -38,7 +43,7 @@ public class ProductService {
         return productRepository.findAll().stream().map(this::toDto).toList();
     }
 
-    private com.luztechnology.product.dto.ProductResponse toDto(Product p) {
+    public com.luztechnology.product.dto.ProductResponse toDto(Product p) {
         java.util.List<com.luztechnology.product.dto.ProductImageResponse> images = p.getImages() == null
                 ? java.util.List.of()
                 : p.getImages().stream().map(this::toImageDto).toList();
@@ -52,6 +57,9 @@ public class ProductService {
                 .categoryId(p.getCategory() == null ? null : p.getCategory().getId())
                 .categoryName(p.getCategory() == null ? null : p.getCategory().getName())
                 .images(images)
+                .featured(p.isFeatured())
+                .discountPercentage(p.getDiscount() != null ? p.getDiscount().getDiscountPercentage() : null)
+                .discountName(p.getDiscount() != null ? p.getDiscount().getName() : null)
                 .build();
     }
 
@@ -72,14 +80,39 @@ public class ProductService {
     @Transactional(readOnly = true)
     public List<Product> searchProducts(String name, UUID categoryId, java.math.BigDecimal minPrice,
             java.math.BigDecimal maxPrice, ProductStatus status) {
-        org.springframework.data.jpa.domain.Specification<Product> spec = org.springframework.data.jpa.domain.Specification
-                .where(
-                        com.luztechnology.product.specification.ProductSpecification.hasName(name))
+        Specification<Product> spec = buildSearchSpec(name, categoryId, minPrice, maxPrice, status);
+        return productRepository.findAll(spec);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<com.luztechnology.product.dto.ProductResponse> searchProductsPaged(
+            String name, UUID categoryId, java.math.BigDecimal minPrice,
+            java.math.BigDecimal maxPrice, ProductStatus status, Pageable pageable) {
+        Specification<Product> spec = buildSearchSpec(name, categoryId, minPrice, maxPrice, status);
+        Page<Product> page = productRepository.findAll(spec, pageable);
+        List<com.luztechnology.product.dto.ProductResponse> dtos = page.getContent().stream().map(this::toDto).toList();
+        return new PageImpl<>(dtos, pageable, page.getTotalElements());
+    }
+
+    private Specification<Product> buildSearchSpec(String name, UUID categoryId,
+            java.math.BigDecimal minPrice, java.math.BigDecimal maxPrice, ProductStatus status) {
+        return Specification
+                .where(com.luztechnology.product.specification.ProductSpecification.hasName(name))
                 .and(com.luztechnology.product.specification.ProductSpecification.hasCategory(categoryId))
                 .and(com.luztechnology.product.specification.ProductSpecification.hasStatus(status))
                 .and(com.luztechnology.product.specification.ProductSpecification.priceBetween(minPrice, maxPrice));
+    }
 
-        return productRepository.findAll(spec);
+    @Transactional(readOnly = true)
+    public List<com.luztechnology.product.dto.ProductResponse> getFeaturedProducts() {
+        return productRepository.findByFeaturedTrue().stream().map(this::toDto).toList();
+    }
+
+    @Transactional
+    public Product setFeatured(UUID id, boolean featured) {
+        Product product = getProductById(id);
+        product.setFeatured(featured);
+        return productRepository.save(product);
     }
 
     @Transactional(readOnly = true)

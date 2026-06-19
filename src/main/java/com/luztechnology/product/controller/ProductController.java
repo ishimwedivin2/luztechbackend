@@ -13,6 +13,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -39,16 +44,28 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(productService.getAllCategories()));
     }
 
+    @GetMapping("/featured")
+    public ResponseEntity<ApiResponse<List<com.luztechnology.product.dto.ProductResponse>>> getFeaturedProducts() {
+        return ResponseEntity.ok(ApiResponse.success(productService.getFeaturedProducts()));
+    }
+
     @GetMapping("/search")
-    public ResponseEntity<ApiResponse<List<Product>>> searchProducts(
+    public ResponseEntity<ApiResponse<Page<com.luztechnology.product.dto.ProductResponse>>> searchProducts(
             @RequestParam(required = false) String name,
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) java.math.BigDecimal minPrice,
             @RequestParam(required = false) java.math.BigDecimal maxPrice,
-            @RequestParam(required = false) ProductStatus status) {
+            @RequestParam(required = false) ProductStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
 
-        List<Product> products = productService.searchProducts(name, categoryId, minPrice, maxPrice, status);
-        return ResponseEntity.ok(ApiResponse.success("Search results retrieved", products));
+        Sort sort = sortDir.equalsIgnoreCase("asc") ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
+        Pageable pageable = PageRequest.of(page, size, sort);
+        Page<com.luztechnology.product.dto.ProductResponse> result =
+                productService.searchProductsPaged(name, categoryId, minPrice, maxPrice, status, pageable);
+        return ResponseEntity.ok(ApiResponse.success("Search results retrieved", result));
     }
 
     @GetMapping("/{id}")
@@ -98,6 +115,13 @@ public class ProductController {
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<Product>> updateProduct(@PathVariable UUID id, @RequestBody Product product) {
         return ResponseEntity.ok(ApiResponse.success("Product updated", productService.updateProduct(id, product)));
+    }
+
+    @PatchMapping("/{id}/featured")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<Product>> setFeatured(@PathVariable UUID id,
+            @RequestParam boolean featured) {
+        return ResponseEntity.ok(ApiResponse.success("Featured status updated", productService.setFeatured(id, featured)));
     }
 
     @PatchMapping("/{id}/status")

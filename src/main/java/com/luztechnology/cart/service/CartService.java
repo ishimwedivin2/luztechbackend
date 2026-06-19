@@ -8,6 +8,8 @@ import com.luztechnology.cart.entity.CartItem;
 import com.luztechnology.cart.repository.CartItemRepository;
 import com.luztechnology.cart.repository.CartRepository;
 import com.luztechnology.common.exception.ResourceNotFoundException;
+import com.luztechnology.finance.entity.Coupon;
+import com.luztechnology.finance.service.CouponService;
 import com.luztechnology.order.dto.OrderRequestDTO;
 import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.service.OrderService;
@@ -33,6 +35,7 @@ public class CartService {
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final OrderService orderService;
+    private final CouponService couponService;
 
     @Transactional
     public CartResponse getCart(User user) {
@@ -98,14 +101,32 @@ public class CartService {
         orderRequest.setShippingAddress(request.getShippingAddress());
         orderRequest.setBillingAddress(request.getBillingAddress());
         orderRequest.setPaymentMethod(request.getPaymentMethod());
-        orderRequest.setItems(cart.getItems().stream()
+
+        List<OrderRequestDTO.OrderItemDTO> itemDTOs = cart.getItems().stream()
                 .map(item -> {
                     OrderRequestDTO.OrderItemDTO dto = new OrderRequestDTO.OrderItemDTO();
                     dto.setProductId(item.getProduct().getId());
                     dto.setQuantity(item.getQuantity());
+                    dto.setUnitPrice(item.getProduct().getPrice());
                     return dto;
                 })
-                .toList());
+                .toList();
+        orderRequest.setItems(itemDTOs);
+
+        // Apply coupon discount if provided
+        if (request.getCouponCode() != null && !request.getCouponCode().isBlank()) {
+            try {
+                Coupon coupon = couponService.getCouponByCode(request.getCouponCode());
+                BigDecimal subtotal = itemDTOs.stream()
+                        .map(i -> i.getUnitPrice().multiply(java.math.BigDecimal.valueOf(i.getQuantity())))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal discount = couponService.calculateDiscount(coupon, subtotal);
+                orderRequest.setTotalAmount(subtotal.subtract(discount).max(BigDecimal.ZERO));
+                couponService.incrementUsage(request.getCouponCode());
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Invalid coupon: " + e.getMessage());
+            }
+        }
 
         Order order = orderService.processOrderForCustomer(user, orderRequest);
         cart.getItems().clear();
@@ -134,6 +155,13 @@ public class CartService {
                 .map(item -> {
                     BigDecimal subTotal = item.getProduct().getPrice()
                             .multiply(BigDecimal.valueOf(item.getQuantity()));
+                    String imageUrl = item.getProduct().getImages().stream()
+                            .filter(img -> img.isPrimary())
+                            .map(img -> img.getUrl())
+                            .findFirst()
+                            .orElseGet(() -> item.getProduct().getImages().isEmpty()
+                                    ? null
+                                    : item.getProduct().getImages().get(0).getUrl());
                     return CartItemResponse.builder()
                             .id(item.getId())
                             .productId(item.getProduct().getId())
@@ -142,6 +170,7 @@ public class CartService {
                             .quantity(item.getQuantity())
                             .unitPrice(item.getProduct().getPrice())
                             .subTotal(subTotal)
+                            .imageUrl(imageUrl)
                             .build();
                 })
                 .toList();
@@ -150,10 +179,13 @@ public class CartService {
                 .map(CartItemResponse::getSubTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        int totalItems = items.stream().mapToInt(CartItemResponse::getQuantity).sum();
+
         return CartResponse.builder()
                 .id(cart.getId())
                 .items(items)
                 .totalAmount(total)
+                .totalItems(totalItems)
                 .build();
     }
 }
