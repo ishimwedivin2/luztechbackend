@@ -2,7 +2,9 @@ package com.luztechnology.admin.controller;
 
 import com.luztechnology.admin.dto.AssignRoleRequest;
 import com.luztechnology.admin.dto.CreateBackupRequest;
+import com.luztechnology.admin.dto.CreateUserRequest;
 import com.luztechnology.admin.dto.ReplaceRolesRequest;
+import com.luztechnology.admin.dto.UpdateUserRequest;
 import com.luztechnology.admin.entity.SystemBackup;
 import com.luztechnology.admin.service.SystemBackupService;
 import com.luztechnology.common.dto.ApiResponse;
@@ -15,6 +17,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,6 +40,7 @@ public class AdminController {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final SystemBackupService systemBackupService;
+    private final PasswordEncoder passwordEncoder;
 
     @GetMapping("/users")
     @PreAuthorize("hasRole('ADMIN')")
@@ -50,12 +54,72 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success("Roles retrieved", roleRepository.findAll()));
     }
 
+    @GetMapping("/users/{userId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<User>> getUser(@PathVariable UUID userId) {
+        return ResponseEntity.ok(ApiResponse.success("User retrieved", getUser_(userId)));
+    }
+
+    @PostMapping("/users")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<User>> createUser(@Valid @RequestBody CreateUserRequest request) {
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new IllegalArgumentException("Email already in use: " + request.getEmail());
+        }
+        String roleName = (request.getRoleName() == null || request.getRoleName().isBlank())
+                ? "ROLE_CUSTOMER"
+                : normalizeRoleName(request.getRoleName());
+        Role role = getRole(roleName);
+        User user = User.builder()
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
+                .email(request.getEmail())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .enabled(true)
+                .emailVerified(false)
+                .provider("LOCAL")
+                .roles(Set.of(role))
+                .build();
+        return ResponseEntity.ok(ApiResponse.success("User created", userRepository.save(user)));
+    }
+
+    @PutMapping("/users/{userId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<User>> updateUser(
+            @PathVariable UUID userId,
+            @RequestBody UpdateUserRequest request) {
+        User user = getUser_(userId);
+        if (request.getFirstName() != null) user.setFirstName(request.getFirstName());
+        if (request.getLastName()  != null) user.setLastName(request.getLastName());
+        if (request.getPhoneNumber() != null) user.setPhoneNumber(request.getPhoneNumber());
+        if (request.getAddress()   != null) user.setAddress(request.getAddress());
+        return ResponseEntity.ok(ApiResponse.success("User updated", userRepository.save(user)));
+    }
+
+    @PostMapping("/users/{userId}/block")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<User>> blockUser(@PathVariable UUID userId) {
+        User user = getUser_(userId);
+        user.setLocked(true);
+        user.setEnabled(false);
+        return ResponseEntity.ok(ApiResponse.success("User blocked", userRepository.save(user)));
+    }
+
+    @PostMapping("/users/{userId}/unblock")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<User>> unblockUser(@PathVariable UUID userId) {
+        User user = getUser_(userId);
+        user.setLocked(false);
+        user.setEnabled(true);
+        return ResponseEntity.ok(ApiResponse.success("User unblocked", userRepository.save(user)));
+    }
+
     @PostMapping("/users/{userId}/roles")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<User>> assignRole(
             @PathVariable UUID userId,
             @Valid @RequestBody AssignRoleRequest request) {
-        User user = getUser(userId);
+        User user = getUser_(userId);
         Role role = getRole(request.getRoleName());
         user.getRoles().add(role);
         return ResponseEntity.ok(ApiResponse.success("Role assigned", userRepository.save(user)));
@@ -66,7 +130,7 @@ public class AdminController {
     public ResponseEntity<ApiResponse<User>> replaceRoles(
             @PathVariable UUID userId,
             @Valid @RequestBody ReplaceRolesRequest request) {
-        User user = getUser(userId);
+        User user = getUser_(userId);
         Set<Role> roles = request.getRoleNames().stream()
                 .map(this::getRole)
                 .collect(Collectors.toSet());
@@ -79,7 +143,7 @@ public class AdminController {
     public ResponseEntity<ApiResponse<User>> removeRole(
             @PathVariable UUID userId,
             @PathVariable String roleName) {
-        User user = getUser(userId);
+        User user = getUser_(userId);
         Role role = getRole(roleName);
         user.getRoles().removeIf(existing -> existing.getId().equals(role.getId()));
         return ResponseEntity.ok(ApiResponse.success("Role removed", userRepository.save(user)));
@@ -111,7 +175,7 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success("Backup restored", systemBackupService.restoreBackup(id)));
     }
 
-    private User getUser(UUID userId) {
+    private User getUser_(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
     }

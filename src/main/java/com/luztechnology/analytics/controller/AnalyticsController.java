@@ -51,6 +51,39 @@ public class AnalyticsController {
                 analyticsService.getKpiDashboard(startDate, endDate)));
     }
 
+    @GetMapping("/top-products")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> getTopProducts(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        java.util.Map<String, Object> kpis = analyticsService.getKpiDashboard(startDate, endDate);
+        @SuppressWarnings("unchecked")
+        java.util.List<java.util.Map<String, Object>> topProducts =
+                (java.util.List<java.util.Map<String, Object>>) kpis.get("topSellingProducts");
+        return ResponseEntity.ok(ApiResponse.success("Top products retrieved", topProducts));
+    }
+
+    @GetMapping("/revenue/monthly")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> getMonthlyRevenue(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok(ApiResponse.success("Monthly revenue retrieved",
+                analyticsService.getMonthlyRevenue(startDate, endDate)));
+    }
+
+    @GetMapping("/orders/by-status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getOrdersByStatus(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        java.util.Map<String, Object> kpis = analyticsService.getKpiDashboard(startDate, endDate);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> breakdown =
+                (java.util.Map<String, Object>) kpis.get("orderStatusBreakdown");
+        return ResponseEntity.ok(ApiResponse.success("Orders by status retrieved", breakdown));
+    }
+
     @GetMapping("/customers")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getCustomerAnalytics() {

@@ -1,7 +1,5 @@
 package com.luztechnology.security.oauth2;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.luztechnology.auth.dto.AuthResponse;
 import com.luztechnology.auth.entity.RefreshToken;
 import com.luztechnology.auth.service.RefreshTokenService;
 import com.luztechnology.security.jwt.JwtUtils;
@@ -11,11 +9,11 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
 import java.util.List;
@@ -45,17 +43,17 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
                 .map(role -> role.getName())
                 .collect(Collectors.toList());
 
-        AuthResponse authResponse = AuthResponse.builder()
-                .token(jwt)
-                .refreshToken(refreshToken.getToken())
-                .id(user.getId().toString())
-                .email(user.getEmail())
-                .firstName(user.getFirstName())
-                .lastName(user.getLastName())
-                .roles(roles)
-                .build();
+        String redirectUrl = UriComponentsBuilder
+                .fromUriString("http://localhost:5173/")
+                .queryParam("oauth_token", jwt)
+                .queryParam("oauth_refresh", refreshToken.getToken())
+                .queryParam("user_id", user.getId().toString())
+                .queryParam("email", user.getEmail())
+                .queryParam("first_name", user.getFirstName())
+                .queryParam("last_name", user.getLastName())
+                .queryParam("roles", String.join(",", roles))
+                .build().toUriString();
 
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        new ObjectMapper().writeValue(response.getOutputStream(), authResponse);
+        getRedirectStrategy().sendRedirect(request, response, redirectUrl);
     }
 }

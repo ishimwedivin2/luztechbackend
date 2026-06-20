@@ -25,6 +25,12 @@ public class BannerController {
         return ResponseEntity.ok(ApiResponse.success(bannerService.getActiveBanners()));
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<Banner>> getBanner(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success("Banner retrieved", bannerService.getBannerById(id)));
+    }
+
     @GetMapping("/all")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<List<Banner>>> getAllBanners() {

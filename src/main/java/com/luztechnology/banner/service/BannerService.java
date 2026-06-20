@@ -23,6 +23,12 @@ public class BannerService {
     }
 
     @Transactional(readOnly = true)
+    public Banner getBannerById(UUID id) {
+        return bannerRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Banner not found: " + id));
+    }
+
+    @Transactional(readOnly = true)
     public List<Banner> getAllBanners() {
         return bannerRepository.findAll();
     }

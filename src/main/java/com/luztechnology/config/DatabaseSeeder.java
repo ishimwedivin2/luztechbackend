@@ -32,6 +32,10 @@ public class DatabaseSeeder implements CommandLineRunner {
     public void run(String... args) throws Exception {
         seedRoles();
         seedAdminUser();
+        seedUser("Divin", "Ishimwe",  "ishimwedivin2@gmail.com",   "Admin@123",   "ROLE_ADMIN");
+        seedUser("Divin", "Ishimwe",  "ishimwedivin01@gmail.com",  "Employee@123","ROLE_EMPLOYEE");
+        seedUser("Divin", "Ishimwe",  "ishimdivin2019@gmail.com",  "Customer@123","ROLE_CUSTOMER");
+        seedUser("Divin", "Ishimwe",  "idivin44@gmail.com",        "Support@123", "ROLE_SUPPORT_AGENT");
     }
 
     private void seedRoles() {
@@ -49,6 +53,30 @@ public class DatabaseSeeder implements CommandLineRunner {
                 roleRepository.save(role);
                 logger.info("Seeded Role: {}", roleName);
             }
+        }
+    }
+
+    private void seedUser(String firstName, String lastName, String email, String password, String roleName) {
+        if (userRepository.findByEmail(email).isEmpty()) {
+            Role role = roleRepository.findByName(roleName)
+                    .orElseThrow(() -> new RuntimeException(roleName + " role not found"));
+
+            Set<Role> roles = new HashSet<>();
+            roles.add(role);
+
+            User user = User.builder()
+                    .firstName(firstName)
+                    .lastName(lastName)
+                    .email(email)
+                    .password(passwordEncoder.encode(password))
+                    .roles(roles)
+                    .provider("LOCAL")
+                    .emailVerified(true)
+                    .forcePasswordChange(false)
+                    .build();
+
+            userRepository.save(user);
+            logger.info("Seeded user: {} | Role: {}", email, roleName);
         }
     }
 

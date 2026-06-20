@@ -174,6 +174,26 @@ public class AnalyticsService {
         return analytics;
     }
 
+    public List<Map<String, Object>> getMonthlyRevenue(LocalDate startDate, LocalDate endDate) {
+        List<Order> revenueOrders = ordersBetween(startDate, endDate).stream()
+                .filter(o -> o.getStatus() != null && REVENUE_STATUSES.contains(o.getStatus()))
+                .toList();
+        java.util.TreeMap<String, BigDecimal> byMonth = new java.util.TreeMap<>();
+        for (Order o : revenueOrders) {
+            java.time.YearMonth ym = java.time.YearMonth.from(
+                    o.getCreatedAt() == null ? LocalDate.now() : o.getCreatedAt().toLocalDate());
+            byMonth.merge(ym.toString(), safeOrderAmount(o), BigDecimal::add);
+        }
+        return byMonth.entrySet().stream()
+                .map(e -> {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("month", e.getKey());
+                    row.put("revenue", e.getValue());
+                    return row;
+                })
+                .toList();
+    }
+
     private List<Order> ordersBetween(LocalDate startDate, LocalDate endDate) {
         return orderRepository.findAll().stream()
                 .filter(order -> {

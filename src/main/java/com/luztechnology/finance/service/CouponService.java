@@ -24,6 +24,25 @@ public class CouponService {
     }
 
     @Transactional(readOnly = true)
+    public Coupon getCouponById(UUID id) {
+        return couponRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Coupon not found with id: " + id));
+    }
+
+    @Transactional
+    public Coupon updateCoupon(UUID id, Coupon updated) {
+        Coupon existing = getCouponById(id);
+        if (updated.getCode()               != null) existing.setCode(updated.getCode());
+        if (updated.getType()               != null) existing.setType(updated.getType());
+        if (updated.getAmount()             != null) existing.setAmount(updated.getAmount());
+        if (updated.getExpiryDate()         != null) existing.setExpiryDate(updated.getExpiryDate());
+        if (updated.getUsageLimit()         != null) existing.setUsageLimit(updated.getUsageLimit());
+        if (updated.getMinimumOrderAmount() != null) existing.setMinimumOrderAmount(updated.getMinimumOrderAmount());
+        existing.setActive(updated.isActive());
+        return couponRepository.save(existing);
+    }
+
+    @Transactional(readOnly = true)
     public Coupon getCouponByCode(String code) {
         return couponRepository.findByCode(code)
                 .orElseThrow(() -> new ResourceNotFoundException("Coupon not found with code: " + code));
