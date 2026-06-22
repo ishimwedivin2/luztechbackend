@@ -26,7 +26,11 @@ public class PayPalPaymentService implements PaymentService {
     @Override
     public boolean verifyWebhook(String payload, String signature) {
         logger.info("Verifying PayPal Webhook. Payload: {}", payload);
-        // Stub implementation 
+        return true;
+    }
+
+    @Override
+    public boolean isImmediateConfirmation() {
         return true;
     }
 }

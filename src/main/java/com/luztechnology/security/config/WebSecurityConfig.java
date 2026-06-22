@@ -2,8 +2,6 @@ package com.luztechnology.security.config;
 
 import com.luztechnology.security.jwt.AuthEntryPointJwt;
 import com.luztechnology.security.jwt.AuthTokenFilter;
-import com.luztechnology.security.oauth2.CustomOAuth2UserService;
-import com.luztechnology.security.oauth2.OAuth2LoginSuccessHandler;
 import com.luztechnology.security.services.UserDetailsServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -35,9 +33,6 @@ public class WebSecurityConfig {
 
     private final UserDetailsServiceImpl userDetailsService;
     private final AuthEntryPointJwt unauthorizedHandler;
-
-    private final CustomOAuth2UserService customOAuth2UserService;
-    private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
 
     @Bean
     public AuthTokenFilter authenticationJwtTokenFilter() {
@@ -80,10 +75,7 @@ public class WebSecurityConfig {
                     .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                     .requestMatchers("/api/payments/webhook/**", "/api/payments/mtn/**").permitAll()
                     .requestMatchers("/actuator/**").hasRole("ADMIN")
-                    .anyRequest().authenticated())
-                .oauth2Login(oauth2 -> oauth2
-                        .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
-                        .successHandler(oAuth2LoginSuccessHandler));
+                    .anyRequest().authenticated());
 
         http.authenticationProvider(authenticationProvider());
         http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);

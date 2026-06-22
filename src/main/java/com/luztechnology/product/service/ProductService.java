@@ -105,7 +105,7 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public List<com.luztechnology.product.dto.ProductResponse> getFeaturedProducts() {
-        return productRepository.findByFeaturedTrue().stream().map(this::toDto).toList();
+        return productRepository.findByFeaturedTrueAndStatus(ProductStatus.ACTIVE).stream().map(this::toDto).toList();
     }
 
     @Transactional

@@ -27,7 +27,7 @@ public class CRMController {
 
     @GetMapping("/customers")
     public ResponseEntity<ApiResponse<List<User>>> getAllCustomers() {
-        return ResponseEntity.ok(ApiResponse.success(userRepository.findAll()));
+        return ResponseEntity.ok(ApiResponse.success(userRepository.findByRoles_Name("ROLE_CUSTOMER")));
     }
 
     @GetMapping("/customers/{id}/summary")

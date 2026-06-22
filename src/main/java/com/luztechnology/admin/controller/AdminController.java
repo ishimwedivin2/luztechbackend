@@ -77,7 +77,6 @@ public class AdminController {
                 .password(passwordEncoder.encode(request.getPassword()))
                 .enabled(true)
                 .emailVerified(false)
-                .provider("LOCAL")
                 .roles(Set.of(role))
                 .build();
         return ResponseEntity.ok(ApiResponse.success("User created", userRepository.save(user)));

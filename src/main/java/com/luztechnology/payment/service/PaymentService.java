@@ -33,4 +33,9 @@ public interface PaymentService {
     default PaymentRefundResult getRefundStatus(String refundReference) {
         throw new UnsupportedOperationException("Refund status checks are not supported for this payment provider");
     }
+
+    /** True for stubs/card/PayPal that confirm immediately without a real async webhook. */
+    default boolean isImmediateConfirmation() {
+        return false;
+    }
 }

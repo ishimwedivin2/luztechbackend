@@ -12,7 +12,7 @@ public class AirtelPaymentService implements PaymentService {
 
     @Override
     public boolean supports(String paymentMethod) {
-        return "AIRTEL_MOMO".equalsIgnoreCase(paymentMethod);
+        return "AIRTEL_MONEY".equalsIgnoreCase(paymentMethod) || "AIRTEL_MOMO".equalsIgnoreCase(paymentMethod);
     }
 
     @Override
@@ -26,7 +26,11 @@ public class AirtelPaymentService implements PaymentService {
     @Override
     public boolean verifyWebhook(String payload, String signature) {
         logger.info("Verifying Airtel MoMo Webhook. Payload: {}", payload);
-        // Verify Airtel Signature Hash
+        return true;
+    }
+
+    @Override
+    public boolean isImmediateConfirmation() {
         return true;
     }
 }

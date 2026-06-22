@@ -64,6 +64,7 @@ public class LiveChatService {
                 .status(OPEN)
                 .build();
         ChatSession savedSession = chatSessionRepository.save(session);
+        messagingTemplate.convertAndSend("/topic/live-chat/sessions", savedSession);
 
         if (openingMessage != null && !openingMessage.isBlank()) {
             sendMessage(savedSession.getId(), customer, openingMessage);
@@ -128,3 +129,4 @@ public class LiveChatService {
                 .build();
     }
 }
+

@@ -46,9 +46,6 @@ public class User extends BaseEntity {
     @Column(nullable = false)
     private boolean enabled = true;
 
-    @Column(name = "auth_provider")
-    private String provider; // "LOCAL", "GOOGLE"
-
     @Column(name = "last_login_date")
     private LocalDateTime lastLoginDate;
 

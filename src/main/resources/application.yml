@@ -32,14 +32,6 @@ spring:
           timeout: 15000
           writetimeout: 15000
 
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: ${GOOGLE_CLIENT_ID:YOUR_GOOGLE_CLIENT_ID}
-            client-secret: ${GOOGLE_CLIENT_SECRET:YOUR_GOOGLE_CLIENT_SECRET}
-
 jwt:
   secret: "7LI8l4wM3yNszu01xGh9o7QK/fSIwNYAyYV5vw3IZD+Zy/CEXtEkFLUFY3qfmVIdT4kiLraInqnndzlHMDGC0g=="
   expirationMs: 86400000 # 24 hours

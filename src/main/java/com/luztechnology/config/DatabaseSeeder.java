@@ -70,7 +70,7 @@ public class DatabaseSeeder implements CommandLineRunner {
                     .email(email)
                     .password(passwordEncoder.encode(password))
                     .roles(roles)
-                    .provider("LOCAL")
+
                     .emailVerified(true)
                     .forcePasswordChange(false)
                     .build();
@@ -94,7 +94,7 @@ public class DatabaseSeeder implements CommandLineRunner {
                     .email("admin@luztech.com")
                     .password(passwordEncoder.encode("Admin@123"))
                     .roles(roles)
-                    .provider("LOCAL")
+
                     .emailVerified(true)
                     .forcePasswordChange(false)
                     .build();

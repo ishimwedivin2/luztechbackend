@@ -36,7 +36,12 @@ public class AuditAspect {
     public void logAfterExecution(JoinPoint joinPoint) {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            String username = (auth != null && auth.isAuthenticated()) ? auth.getName() : "ANONYMOUS";
+            String username;
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
+                username = "SYSTEM";
+            } else {
+                username = auth.getName(); // returns email from UserDetailsImpl
+            }
             
             String action = joinPoint.getSignature().getName();
             String resource = joinPoint.getSignature().getDeclaringTypeName();

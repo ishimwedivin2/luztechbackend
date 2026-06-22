@@ -1,5 +1,13 @@
 package com.luztechnology.analytics.service;
 
+import com.luztechnology.analytics.dto.CustomerAnalyticsResponse;
+import com.luztechnology.analytics.dto.InventoryAnalyticsResponse;
+import com.luztechnology.analytics.dto.KpiDashboardResponse;
+import com.luztechnology.analytics.dto.LowStockItemResponse;
+import com.luztechnology.analytics.dto.MonthlyRevenueResponse;
+import com.luztechnology.analytics.dto.SalesTrendPoint;
+import com.luztechnology.analytics.dto.SupportAnalyticsResponse;
+import com.luztechnology.analytics.dto.TopProductResponse;
 import com.luztechnology.analytics.entity.SalesReport;
 import com.luztechnology.analytics.repository.SalesReportRepository;
 import com.luztechnology.crm.repository.CustomerProfileRepository;
@@ -18,11 +26,13 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,6 +45,11 @@ public class AnalyticsService {
             OrderStatus.SHIPPED,
             OrderStatus.DELIVERED,
             OrderStatus.RETURN_REQUESTED);
+
+    private static final Set<OrderStatus> REFUND_STATUSES = Set.of(
+            OrderStatus.RETURN_REQUESTED,
+            OrderStatus.RETURNED,
+            OrderStatus.REFUNDED);
 
     private final SalesReportRepository salesReportRepository;
     private final OrderRepository orderRepository;
@@ -53,225 +68,228 @@ public class AnalyticsService {
         return total != null ? total : 0.0;
     }
 
-    public Map<String, Object> getFinancialDashboard() {
+    public KpiDashboardResponse getFinancialDashboard() {
         LocalDate now = LocalDate.now();
-        LocalDate lastMonth = now.minusMonths(1);
-        return getKpiDashboard(lastMonth, now);
+        return getKpiDashboard(now.minusMonths(1), now);
     }
 
-    public Map<String, Object> getKpiDashboard(LocalDate startDate, LocalDate endDate) {
+    public KpiDashboardResponse getKpiDashboard(LocalDate startDate, LocalDate endDate) {
         List<Order> orders = ordersBetween(startDate, endDate);
         List<Order> revenueOrders = orders.stream()
-                .filter(order -> order.getStatus() != null && REVENUE_STATUSES.contains(order.getStatus()))
+                .filter(o -> o.getStatus() != null && REVENUE_STATUSES.contains(o.getStatus()))
                 .toList();
+
         BigDecimal totalRevenue = revenueOrders.stream()
-                .map(this::safeOrderAmount)
+                .map(this::safeAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal averageOrderValue = revenueOrders.isEmpty()
                 ? BigDecimal.ZERO
                 : totalRevenue.divide(BigDecimal.valueOf(revenueOrders.size()), 2, RoundingMode.HALF_UP);
 
-        Map<String, Object> dashboard = new HashMap<>();
-        dashboard.put("startDate", startDate);
-        dashboard.put("endDate", endDate);
-        dashboard.put("totalRevenue", totalRevenue);
-        dashboard.put("totalOrders", orders.size());
-        dashboard.put("paidOrActiveOrders", revenueOrders.size());
-        dashboard.put("averageOrderValue", averageOrderValue);
-        dashboard.put("activeCustomers", countActiveCustomers(revenueOrders));
-        dashboard.put("orderStatusBreakdown", orderStatusBreakdown(orders));
-        dashboard.put("salesTrend", salesTrend(startDate, endDate, revenueOrders));
-        dashboard.put("topSellingProducts", topSellingProducts(revenueOrders));
-        dashboard.put("customerAnalytics", getCustomerAnalytics());
-        dashboard.put("inventoryAnalytics", getInventoryAnalytics());
-        dashboard.put("supportAnalytics", getSupportAnalytics());
+        long refundedCount = orders.stream()
+                .filter(o -> o.getStatus() != null && REFUND_STATUSES.contains(o.getStatus()))
+                .count();
+        BigDecimal refundRate = orders.isEmpty()
+                ? BigDecimal.ZERO
+                : BigDecimal.valueOf(refundedCount)
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(BigDecimal.valueOf(orders.size()), 2, RoundingMode.HALF_UP);
 
-        return dashboard;
+        return KpiDashboardResponse.builder()
+                .startDate(startDate)
+                .endDate(endDate)
+                .totalRevenue(totalRevenue)
+                .totalOrders(orders.size())
+                .paidOrActiveOrders(revenueOrders.size())
+                .averageOrderValue(averageOrderValue)
+                .activeCustomers(countActiveCustomers(revenueOrders))
+                .refundRate(refundRate)
+                .orderStatusBreakdown(orderStatusBreakdown(orders))
+                .salesTrend(salesTrend(startDate, endDate, revenueOrders))
+                .topSellingProducts(topSellingProducts(revenueOrders))
+                .customerAnalytics(getCustomerAnalytics())
+                .inventoryAnalytics(getInventoryAnalytics())
+                .supportAnalytics(getSupportAnalytics())
+                .build();
     }
 
-    public Map<String, Object> getCustomerAnalytics() {
+    public CustomerAnalyticsResponse getCustomerAnalytics() {
         long totalCustomers = userRepository.findAll().stream()
-                .filter(user -> user.getRoles().stream()
-                        .anyMatch(role -> "ROLE_CUSTOMER".equals(role.getName())))
+                .filter(u -> u.getRoles().stream().anyMatch(r -> "ROLE_CUSTOMER".equals(r.getName())))
                 .count();
         BigDecimal lifetimeValue = customerProfileRepository.findAll().stream()
-                .map(profile -> profile.getTotalSpent() == null ? BigDecimal.ZERO : profile.getTotalSpent())
+                .map(p -> p.getTotalSpent() == null ? BigDecimal.ZERO : p.getTotalSpent())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal averageLifetimeValue = totalCustomers == 0
+        BigDecimal avgLifetimeValue = totalCustomers == 0
                 ? BigDecimal.ZERO
                 : lifetimeValue.divide(BigDecimal.valueOf(totalCustomers), 2, RoundingMode.HALF_UP);
-
         Map<String, Long> segmentBreakdown = customerProfileRepository.findAll().stream()
                 .collect(Collectors.groupingBy(
-                        profile -> profile.getSegment() == null ? "UNSEGMENTED" : profile.getSegment().getName(),
+                        p -> p.getSegment() == null ? "UNSEGMENTED" : p.getSegment().getName(),
                         Collectors.counting()));
-
-        Map<String, Object> analytics = new HashMap<>();
-        analytics.put("totalCustomers", totalCustomers);
-        analytics.put("profiledCustomers", customerProfileRepository.count());
-        analytics.put("lifetimeValue", lifetimeValue);
-        analytics.put("averageLifetimeValue", averageLifetimeValue);
-        analytics.put("segmentBreakdown", segmentBreakdown);
-        analytics.put("customersWithSupportTickets", supportTicketRepository.findAll().stream()
-                .map(ticket -> ticket.getCustomer() == null ? null : ticket.getCustomer().getId())
+        long customersWithTickets = supportTicketRepository.findAll().stream()
+                .map(t -> t.getCustomer() == null ? null : t.getCustomer().getId())
                 .filter(java.util.Objects::nonNull)
                 .distinct()
-                .count());
-        return analytics;
+                .count();
+
+        return CustomerAnalyticsResponse.builder()
+                .totalCustomers(totalCustomers)
+                .profiledCustomers(customerProfileRepository.count())
+                .lifetimeValue(lifetimeValue)
+                .averageLifetimeValue(avgLifetimeValue)
+                .segmentBreakdown(segmentBreakdown)
+                .customersWithSupportTickets(customersWithTickets)
+                .build();
     }
 
-    public Map<String, Object> getInventoryAnalytics() {
+    public InventoryAnalyticsResponse getInventoryAnalytics() {
         List<InventoryItem> items = inventoryItemRepository.findAll();
-        int totalUnits = items.stream().mapToInt(item -> safeInteger(item.getQuantity())).sum();
-        int lowStockItems = (int) items.stream()
-                .filter(item -> safeInteger(item.getQuantity()) <= safeInteger(item.getLowStockThreshold()))
+        int totalUnits = items.stream().mapToInt(i -> safe(i.getQuantity())).sum();
+        int lowStockCount = (int) items.stream()
+                .filter(i -> safe(i.getQuantity()) <= safe(i.getLowStockThreshold()))
                 .count();
-        int outOfStockItems = (int) items.stream()
-                .filter(item -> safeInteger(item.getQuantity()) == 0)
+        int outOfStockCount = (int) items.stream()
+                .filter(i -> safe(i.getQuantity()) == 0)
                 .count();
+        BigDecimal health = items.isEmpty()
+                ? BigDecimal.valueOf(100)
+                : BigDecimal.valueOf(items.size() - lowStockCount)
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(BigDecimal.valueOf(items.size()), 2, RoundingMode.HALF_UP);
 
-        List<Map<String, Object>> lowStock = items.stream()
-                .filter(item -> safeInteger(item.getQuantity()) <= safeInteger(item.getLowStockThreshold()))
-                .sorted(Comparator.comparingInt(item -> safeInteger(item.getQuantity())))
-                .map(item -> {
-                    Map<String, Object> row = new HashMap<>();
-                    row.put("id", item.getId());
-                    row.put("sku", item.getSku());
-                    row.put("productName", item.getProductName());
-                    row.put("quantity", item.getQuantity());
-                    row.put("lowStockThreshold", item.getLowStockThreshold());
-                    row.put("location", item.getLocation());
-                    return row;
-                })
+        List<LowStockItemResponse> lowStock = items.stream()
+                .filter(i -> safe(i.getQuantity()) <= safe(i.getLowStockThreshold()))
+                .sorted(Comparator.comparingInt(i -> safe(i.getQuantity())))
+                .map(i -> LowStockItemResponse.builder()
+                        .id(i.getId())
+                        .sku(i.getSku())
+                        .productName(i.getProductName())
+                        .quantity(safe(i.getQuantity()))
+                        .lowStockThreshold(safe(i.getLowStockThreshold()))
+                        .location(i.getLocation())
+                        .build())
                 .toList();
 
-        Map<String, Object> analytics = new HashMap<>();
-        analytics.put("totalItems", items.size());
-        analytics.put("totalUnits", totalUnits);
-        analytics.put("lowStockItems", lowStockItems);
-        analytics.put("outOfStockItems", outOfStockItems);
-        analytics.put("stockHealthPercent", items.isEmpty()
-                ? 100
-                : BigDecimal.valueOf(items.size() - lowStockItems)
-                        .multiply(BigDecimal.valueOf(100))
-                        .divide(BigDecimal.valueOf(items.size()), 2, RoundingMode.HALF_UP));
-        analytics.put("lowStock", lowStock);
-        return analytics;
+        return InventoryAnalyticsResponse.builder()
+                .totalItems(items.size())
+                .totalUnits(totalUnits)
+                .lowStockItems(lowStockCount)
+                .outOfStockItems(outOfStockCount)
+                .stockHealthPercent(health)
+                .lowStock(lowStock)
+                .build();
     }
 
-    public Map<String, Object> getSupportAnalytics() {
-        Map<String, Long> ticketStatusBreakdown = supportTicketRepository.findAll().stream()
-                .collect(Collectors.groupingBy(ticket -> ticket.getStatus() == null ? "UNKNOWN" : ticket.getStatus(),
+    public SupportAnalyticsResponse getSupportAnalytics() {
+        Map<String, Long> statusBreakdown = supportTicketRepository.findAll().stream()
+                .collect(Collectors.groupingBy(
+                        t -> t.getStatus() == null ? "UNKNOWN" : t.getStatus(),
                         Collectors.counting()));
-        Map<String, Long> ticketPriorityBreakdown = supportTicketRepository.findAll().stream()
-                .collect(Collectors.groupingBy(ticket -> ticket.getPriority() == null ? "UNKNOWN" : ticket.getPriority(),
+        Map<String, Long> priorityBreakdown = supportTicketRepository.findAll().stream()
+                .collect(Collectors.groupingBy(
+                        t -> t.getPriority() == null ? "UNKNOWN" : t.getPriority(),
                         Collectors.counting()));
 
-        Map<String, Object> analytics = new HashMap<>();
-        analytics.put("totalTickets", supportTicketRepository.count());
-        analytics.put("statusBreakdown", ticketStatusBreakdown);
-        analytics.put("priorityBreakdown", ticketPriorityBreakdown);
-        return analytics;
+        return SupportAnalyticsResponse.builder()
+                .totalTickets(supportTicketRepository.count())
+                .statusBreakdown(statusBreakdown)
+                .priorityBreakdown(priorityBreakdown)
+                .build();
     }
 
-    public List<Map<String, Object>> getMonthlyRevenue(LocalDate startDate, LocalDate endDate) {
+    public List<MonthlyRevenueResponse> getMonthlyRevenue(LocalDate startDate, LocalDate endDate) {
         List<Order> revenueOrders = ordersBetween(startDate, endDate).stream()
                 .filter(o -> o.getStatus() != null && REVENUE_STATUSES.contains(o.getStatus()))
                 .toList();
-        java.util.TreeMap<String, BigDecimal> byMonth = new java.util.TreeMap<>();
+        TreeMap<String, BigDecimal> byMonth = new TreeMap<>();
         for (Order o : revenueOrders) {
-            java.time.YearMonth ym = java.time.YearMonth.from(
-                    o.getCreatedAt() == null ? LocalDate.now() : o.getCreatedAt().toLocalDate());
-            byMonth.merge(ym.toString(), safeOrderAmount(o), BigDecimal::add);
+            YearMonth ym = YearMonth.from(o.getCreatedAt() == null
+                    ? LocalDate.now() : o.getCreatedAt().toLocalDate());
+            byMonth.merge(ym.toString(), safeAmount(o), BigDecimal::add);
         }
         return byMonth.entrySet().stream()
-                .map(e -> {
-                    Map<String, Object> row = new HashMap<>();
-                    row.put("month", e.getKey());
-                    row.put("revenue", e.getValue());
-                    return row;
-                })
+                .map(e -> MonthlyRevenueResponse.builder()
+                        .month(e.getKey())
+                        .revenue(e.getValue())
+                        .build())
                 .toList();
     }
 
+    // ── Private helpers ───────────────────────────────────────
+
     private List<Order> ordersBetween(LocalDate startDate, LocalDate endDate) {
         return orderRepository.findAll().stream()
-                .filter(order -> {
-                    LocalDate orderDate = order.getCreatedAt() == null ? LocalDate.now() : order.getCreatedAt().toLocalDate();
-                    return !orderDate.isBefore(startDate) && !orderDate.isAfter(endDate);
+                .filter(o -> {
+                    LocalDate d = o.getCreatedAt() == null ? LocalDate.now() : o.getCreatedAt().toLocalDate();
+                    return !d.isBefore(startDate) && !d.isAfter(endDate);
                 })
                 .toList();
     }
 
     private Map<String, Long> orderStatusBreakdown(List<Order> orders) {
         return orders.stream()
-                .collect(Collectors.groupingBy(order -> order.getStatus() == null ? "UNKNOWN" : order.getStatus().name(),
+                .collect(Collectors.groupingBy(
+                        o -> o.getStatus() == null ? "UNKNOWN" : o.getStatus().name(),
                         Collectors.counting()));
     }
 
-    private List<Map<String, Object>> salesTrend(LocalDate startDate, LocalDate endDate, List<Order> orders) {
-        Map<LocalDate, List<Order>> ordersByDate = orders.stream()
-                .collect(Collectors.groupingBy(order -> order.getCreatedAt() == null
-                        ? LocalDate.now()
-                        : order.getCreatedAt().toLocalDate()));
+    private List<SalesTrendPoint> salesTrend(LocalDate startDate, LocalDate endDate, List<Order> orders) {
+        Map<LocalDate, List<Order>> byDate = orders.stream()
+                .collect(Collectors.groupingBy(o -> o.getCreatedAt() == null
+                        ? LocalDate.now() : o.getCreatedAt().toLocalDate()));
 
         return startDate.datesUntil(endDate.plusDays(1))
                 .map(date -> {
-                    List<Order> dayOrders = ordersByDate.getOrDefault(date, List.of());
-                    Map<String, Object> row = new HashMap<>();
-                    row.put("date", date);
-                    row.put("orders", dayOrders.size());
-                    row.put("revenue", dayOrders.stream()
-                            .map(this::safeOrderAmount)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add));
-                    return row;
+                    List<Order> dayOrders = byDate.getOrDefault(date, List.of());
+                    return SalesTrendPoint.builder()
+                            .date(date)
+                            .orders(dayOrders.size())
+                            .revenue(dayOrders.stream()
+                                    .map(this::safeAmount)
+                                    .reduce(BigDecimal.ZERO, BigDecimal::add))
+                            .build();
                 })
                 .toList();
     }
 
-    private List<Map<String, Object>> topSellingProducts(List<Order> orders) {
-        Set<java.util.UUID> orderIds = orders.stream()
-                .map(Order::getId)
-                .collect(Collectors.toSet());
+    private List<TopProductResponse> topSellingProducts(List<Order> orders) {
+        Set<UUID> orderIds = orders.stream().map(Order::getId).collect(Collectors.toSet());
+        Map<String, List<OrderItem>> byProduct = orderItemRepository.findAll().stream()
+                .filter(i -> i.getOrder() != null && orderIds.contains(i.getOrder().getId()))
+                .collect(Collectors.groupingBy(i -> i.getProduct() == null
+                        ? "UNKNOWN" : i.getProduct().getName()));
 
-        Map<String, List<OrderItem>> itemsByProduct = orderItemRepository.findAll().stream()
-                .filter(item -> item.getOrder() != null && orderIds.contains(item.getOrder().getId()))
-                .collect(Collectors.groupingBy(item -> item.getProduct() == null
-                        ? "UNKNOWN"
-                        : item.getProduct().getName()));
-
-        return itemsByProduct.entrySet().stream()
-                .map(entry -> {
-                    int unitsSold = entry.getValue().stream()
-                            .mapToInt(item -> safeInteger(item.getQuantity()))
-                            .sum();
-                    BigDecimal revenue = entry.getValue().stream()
-                            .map(item -> item.getSubTotal() == null ? BigDecimal.ZERO : item.getSubTotal())
+        return byProduct.entrySet().stream()
+                .map(e -> {
+                    int units = e.getValue().stream().mapToInt(i -> safe(i.getQuantity())).sum();
+                    BigDecimal rev = e.getValue().stream()
+                            .map(i -> i.getSubTotal() == null ? BigDecimal.ZERO : i.getSubTotal())
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
-                    Map<String, Object> row = new HashMap<>();
-                    row.put("productName", entry.getKey());
-                    row.put("unitsSold", unitsSold);
-                    row.put("revenue", revenue);
-                    return row;
+                    return TopProductResponse.builder()
+                            .productName(e.getKey())
+                            .unitsSold(units)
+                            .revenue(rev)
+                            .build();
                 })
-                .sorted((left, right) -> Integer.compare((Integer) right.get("unitsSold"), (Integer) left.get("unitsSold")))
+                .sorted(Comparator.comparingInt(TopProductResponse::getUnitsSold).reversed())
                 .limit(5)
                 .toList();
     }
 
     private long countActiveCustomers(List<Order> orders) {
         return orders.stream()
-                .map(order -> order.getCustomer() == null ? null : order.getCustomer().getId())
+                .map(o -> o.getCustomer() == null ? null : o.getCustomer().getId())
                 .filter(java.util.Objects::nonNull)
                 .distinct()
                 .count();
     }
 
-    private BigDecimal safeOrderAmount(Order order) {
+    private BigDecimal safeAmount(Order order) {
         return order.getTotalAmount() == null ? BigDecimal.ZERO : order.getTotalAmount();
     }
 
-    private int safeInteger(Integer value) {
+    private int safe(Integer value) {
         return value == null ? 0 : value;
     }
 }

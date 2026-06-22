@@ -107,7 +107,6 @@ public class AuthController {
                 .password(encoder.encode(signUpRequest.getPassword()))
                 .enabled(true)
                 .emailVerified(false)
-                .provider("LOCAL")
                 .build();
 
         Role userRole = roleRepository.findByName("ROLE_CUSTOMER")
@@ -167,6 +166,29 @@ public class AuthController {
         UserDetailsImpl userDetails = (UserDetailsImpl) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         refreshTokenService.deleteByUserId(userDetails.getId());
         return ResponseEntity.ok(ApiResponse.success("Log out successful", null));
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<String>> changePassword(
+            @RequestBody java.util.Map<String, String> body) {
+        UserDetailsImpl userDetails = (UserDetailsImpl) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        User user = userRepository.findById(userDetails.getId()).orElseThrow();
+
+        String currentPassword = body.get("currentPassword");
+        String newPassword     = body.get("newPassword");
+
+        if (currentPassword == null || newPassword == null || newPassword.length() < 8) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Current password and new password (min 8 chars) are required"));
+        }
+        if (!encoder.matches(currentPassword, user.getPassword())) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Current password is incorrect"));
+        }
+
+        user.setPassword(encoder.encode(newPassword));
+        userRepository.save(user);
+        return ResponseEntity.ok(ApiResponse.success("Password changed successfully", null));
     }
 
     private AuthResponse buildAuthResponse(User user) {

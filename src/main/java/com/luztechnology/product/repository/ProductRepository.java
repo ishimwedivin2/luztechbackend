@@ -19,4 +19,6 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
     List<Product> findByStatus(ProductStatus status);
 
     List<Product> findByFeaturedTrue();
+
+    List<Product> findByFeaturedTrueAndStatus(ProductStatus status);
 }

@@ -26,7 +26,11 @@ public class BKCardPaymentService implements PaymentService {
     @Override
     public boolean verifyWebhook(String payload, String signature) {
         logger.info("Verifying BK Card Webhook. Payload: {}", payload);
-        // Secure token verification for Server-to-Server callbacks
+        return true;
+    }
+
+    @Override
+    public boolean isImmediateConfirmation() {
         return true;
     }
 }
