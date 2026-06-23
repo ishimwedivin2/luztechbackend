@@ -3,6 +3,7 @@ package com.luztechnology.order.service;
 import com.luztechnology.common.exception.ResourceNotFoundException;
 import com.luztechnology.inventory.service.InventoryService;
 import com.luztechnology.finance.service.TaxService;
+import com.luztechnology.notification.service.MailService;
 import com.luztechnology.order.dto.OrderRequestDTO;
 import com.luztechnology.order.dto.OrderTrackingEventResponse;
 import com.luztechnology.order.dto.OrderTrackingResponse;
@@ -27,7 +28,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -42,6 +46,7 @@ public class OrderService {
     private final com.luztechnology.crm.service.CRMService crmService;
     private final InventoryService inventoryService;
     private final TaxService taxService;
+    private final MailService mailService;
     private final OrderTrackingEventRepository trackingEventRepository;
     private final ShipmentRepository shipmentRepository;
 
@@ -186,9 +191,58 @@ public class OrderService {
 
         if (newStatus == OrderStatus.PAID) {
             taxService.recordTaxForPaidOrder(savedOrder);
+            sendReceiptEmail(savedOrder);
         }
 
         return savedOrder;
+    }
+
+    private void sendReceiptEmail(Order order) {
+        if (order.getCustomer() == null || order.getCustomer().getEmail() == null) return;
+        try {
+            BigDecimal sub   = order.getSubTotalAmount() != null ? order.getSubTotalAmount() : BigDecimal.ZERO;
+            BigDecimal tax   = order.getTaxAmount()      != null ? order.getTaxAmount()      : BigDecimal.ZERO;
+            BigDecimal total = order.getTotalAmount()    != null ? order.getTotalAmount()    : BigDecimal.ZERO;
+            BigDecimal rate  = order.getTaxRate()        != null ? order.getTaxRate().multiply(BigDecimal.valueOf(100)) : BigDecimal.valueOf(18);
+
+            List<Map<String, Object>> itemList = order.getOrderItems().stream().map(i -> {
+                Map<String, Object> m = new HashMap<>();
+                m.put("productName", i.getProduct() != null ? i.getProduct().getName() : "Product");
+                m.put("quantity",    i.getQuantity());
+                m.put("unitPrice",   i.getUnitPrice() != null ? i.getUnitPrice().longValue() : 0L);
+                m.put("subTotal",    i.getUnitPrice() != null ? i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity())).longValue() : 0L);
+                return m;
+            }).collect(Collectors.toList());
+
+            User customer = order.getCustomer();
+            String firstName = customer.getFirstName() != null ? customer.getFirstName() : "";
+            String lastName  = customer.getLastName()  != null ? customer.getLastName()  : "";
+            String fullName  = (firstName + " " + lastName).trim();
+            String displayName = fullName.isEmpty() ? customer.getEmail() : fullName;
+
+            Map<String, Object> vars = new HashMap<>();
+            vars.put("customerName",    displayName);
+            vars.put("orderNumber",     order.getOrderNumber());
+            vars.put("items",           itemList);
+            vars.put("subTotalAmount",  sub.longValue());
+            vars.put("taxAmount",       tax.longValue());
+            vars.put("taxRate",         rate.intValue());
+            vars.put("totalAmount",     total.longValue());
+            vars.put("paymentMethod",   order.getPaymentMethod() != null ? order.getPaymentMethod() : "—");
+            vars.put("paymentReference",order.getPaymentReference());
+            vars.put("shippingAddress", order.getShippingAddress());
+            vars.put("orderDate",       order.getCreatedAt() != null
+                    ? order.getCreatedAt().format(DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")) : "—");
+
+            mailService.sendEmail(
+                    order.getCustomer().getEmail(),
+                    "Your Luz Technology Receipt — " + order.getOrderNumber(),
+                    "order-confirmation",
+                    vars
+            );
+        } catch (Exception e) {
+            // Do not fail the transaction if email fails
+        }
     }
 
     @Transactional

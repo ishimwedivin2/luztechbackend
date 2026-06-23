@@ -21,6 +21,9 @@ public class MailService {
     private final JavaMailSender javaMailSender;
     private final TemplateEngine templateEngine;
 
+    @org.springframework.beans.factory.annotation.Value("${spring.mail.username}")
+    private String senderEmail;
+
     public void sendEmail(String to, String subject, String templateName, Map<String, Object> templateModel) {
         try {
             Context thymeleafContext = new Context();
@@ -31,6 +34,7 @@ public class MailService {
             MimeMessage message = javaMailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
+            helper.setFrom(senderEmail, "Luz Technology");
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(htmlBody, true);
@@ -40,6 +44,8 @@ public class MailService {
 
         } catch (MessagingException e) {
             logger.error("Failed to send email to {}", to, e);
+        } catch (java.io.UnsupportedEncodingException e) {
+            logger.error("Failed to set sender name for email to {}", to, e);
         }
     }
 }

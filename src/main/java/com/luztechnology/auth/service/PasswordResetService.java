@@ -46,13 +46,13 @@ public class PasswordResetService {
                     .build();
             passwordResetTokenRepository.save(passwordResetToken);
 
-            String resetLink = passwordResetUrl + "?token=" + token;
+            String resetLink = passwordResetUrl + "/?view=reset-password&token=" + token;
             mailService.sendEmail(
                     user.getEmail(),
                     "Reset your Luz Technology password",
                     "password-reset",
                     Map.of(
-                            "name", user.getFirstName(),
+                            "name", user.getLastName() != null ? user.getLastName() : user.getFirstName(),
                             "resetLink", resetLink,
                             "token", token,
                             "expirationMinutes", passwordResetExpirationMinutes

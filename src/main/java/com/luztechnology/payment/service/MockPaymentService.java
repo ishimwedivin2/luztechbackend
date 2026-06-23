@@ -1,6 +1,5 @@
 package com.luztechnology.payment.service;
 
-import com.luztechnology.notification.service.MailService;
 import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.entity.OrderStatus;
 import com.luztechnology.order.service.OrderService;
@@ -12,8 +11,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -23,7 +20,6 @@ public class MockPaymentService implements PaymentService {
     private static final Logger logger = LoggerFactory.getLogger(MockPaymentService.class);
 
     private final OrderService orderService;
-    private final MailService mailService;
 
     @Value("${payment.mode:real}")
     private String paymentMode;
@@ -45,19 +41,7 @@ public class MockPaymentService implements PaymentService {
         orderService.updateOrderStatus(order.getId(), OrderStatus.PAID);
         logger.info("[MOCK MODE] Order {} marked as PAID with Ref: {}", order.getId(), mockReference);
 
-        // 2. Trigger Confirmation Email via Thymeleaf template
-        Map<String, Object> emailVars = new HashMap<>();
-        emailVars.put("customerName", order.getCustomer().getFirstName());
-        emailVars.put("orderNumber", order.getOrderNumber());
-        emailVars.put("totalAmount", order.getTotalAmount());
-        
-        mailService.sendEmail(
-                order.getCustomer().getEmail(), 
-                "Order Conformation - " + order.getOrderNumber(), 
-                "order-confirmation", 
-                emailVars
-        );
-
+        // Receipt email is sent automatically by OrderService.updateOrderStatus when PAID
         return mockReference;
     }
 

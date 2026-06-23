@@ -5,21 +5,57 @@ import com.luztechnology.inventory.entity.InventoryItem;
 import com.luztechnology.inventory.entity.StockMovement;
 import com.luztechnology.inventory.repository.InventoryItemRepository;
 import com.luztechnology.inventory.repository.StockMovementRepository;
+import com.luztechnology.notification.service.MailService;
+import com.luztechnology.product.entity.Product;
+import com.luztechnology.product.repository.ProductRepository;
+import com.luztechnology.user.entity.User;
+import com.luztechnology.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class InventoryService {
 
+    private static final Logger logger = LoggerFactory.getLogger(InventoryService.class);
+    private static final int HARD_LOW_STOCK_MIN = 5;
+
     private final InventoryItemRepository inventoryItemRepository;
     private final StockMovementRepository stockMovementRepository;
+    private final ProductRepository productRepository;
+    private final UserRepository userRepository;
+    private final MailService mailService;
+
+    // ── Auto-sync: create InventoryItem for any Product that doesn't have one yet ──
+    @Transactional
+    public void syncFromProducts() {
+        List<InventoryItem> existing = inventoryItemRepository.findAll();
+        Set<String> existingSkus = existing.stream()
+                .map(InventoryItem::getSku)
+                .collect(Collectors.toSet());
+
+        List<InventoryItem> toCreate = productRepository.findAll().stream()
+                .filter(p -> p.getSku() != null && !existingSkus.contains(p.getSku()))
+                .map(p -> InventoryItem.builder()
+                        .sku(p.getSku())
+                        .productName(p.getName())
+                        .quantity(0)
+                        .lowStockThreshold(HARD_LOW_STOCK_MIN)
+                        .location("Main Warehouse")
+                        .build())
+                .collect(Collectors.toList());
+
+        if (!toCreate.isEmpty()) {
+            inventoryItemRepository.saveAll(toCreate);
+            logger.info("Auto-synced {} inventory items from products", toCreate.size());
+        }
+    }
 
     @Transactional(readOnly = true)
     public List<InventoryItem> getAllItems() {
@@ -35,7 +71,8 @@ public class InventoryService {
     @Transactional(readOnly = true)
     public List<InventoryItem> getLowStockItems() {
         return inventoryItemRepository.findAll().stream()
-                .filter(item -> item.getQuantity() <= item.getLowStockThreshold())
+                .filter(item -> item.getQuantity() != null
+                        && item.getQuantity() <= Math.max(HARD_LOW_STOCK_MIN, item.getLowStockThreshold() == null ? 0 : item.getLowStockThreshold()))
                 .toList();
     }
 
@@ -43,10 +80,11 @@ public class InventoryService {
     public Map<String, Object> getStockDashboard() {
         List<InventoryItem> items = inventoryItemRepository.findAll();
         List<InventoryItem> lowStock = items.stream()
-                .filter(item -> item.getQuantity() <= item.getLowStockThreshold())
+                .filter(item -> item.getQuantity() != null
+                        && item.getQuantity() <= Math.max(HARD_LOW_STOCK_MIN, item.getLowStockThreshold() == null ? 0 : item.getLowStockThreshold()))
                 .toList();
         List<InventoryItem> outOfStock = items.stream()
-                .filter(item -> item.getQuantity() == 0)
+                .filter(item -> item.getQuantity() == null || item.getQuantity() == 0)
                 .toList();
         int totalUnits = items.stream()
                 .mapToInt(item -> item.getQuantity() == null ? 0 : item.getQuantity())
@@ -57,7 +95,7 @@ public class InventoryService {
 
         List<Map<String, Object>> reorderSuggestions = lowStock.stream()
                 .map(item -> {
-                    int threshold = item.getLowStockThreshold() == null ? 0 : item.getLowStockThreshold();
+                    int threshold = item.getLowStockThreshold() == null ? HARD_LOW_STOCK_MIN : item.getLowStockThreshold();
                     int quantity = item.getQuantity() == null ? 0 : item.getQuantity();
                     Map<String, Object> row = new HashMap<>();
                     row.put("itemId", item.getId());
@@ -72,17 +110,11 @@ public class InventoryService {
                 .toList();
 
         List<Map<String, Object>> recentMovements = stockMovementRepository.findAll().stream()
-                .sorted((left, right) -> {
-                    if (left.getCreatedAt() == null && right.getCreatedAt() == null) {
-                        return 0;
-                    }
-                    if (left.getCreatedAt() == null) {
-                        return 1;
-                    }
-                    if (right.getCreatedAt() == null) {
-                        return -1;
-                    }
-                    return right.getCreatedAt().compareTo(left.getCreatedAt());
+                .sorted((l, r) -> {
+                    if (l.getCreatedAt() == null && r.getCreatedAt() == null) return 0;
+                    if (l.getCreatedAt() == null) return 1;
+                    if (r.getCreatedAt() == null) return -1;
+                    return r.getCreatedAt().compareTo(l.getCreatedAt());
                 })
                 .limit(10)
                 .map(movement -> {
@@ -124,7 +156,6 @@ public class InventoryService {
     public InventoryItem adjustStock(UUID itemId, int quantityChange, String reason, String type, String referenceId) {
         InventoryItem item = getItemById(itemId);
 
-        // Record movement
         StockMovement movement = StockMovement.builder()
                 .inventoryItem(item)
                 .quantity(quantityChange)
@@ -134,12 +165,45 @@ public class InventoryService {
                 .build();
         stockMovementRepository.save(movement);
 
-        // Update quantity
         item.setQuantity(item.getQuantity() + quantityChange);
         if (item.getQuantity() < 0) {
             throw new IllegalArgumentException("Insufficient stock for item: " + item.getProductName());
         }
 
-        return inventoryItemRepository.save(item);
+        InventoryItem saved = inventoryItemRepository.save(item);
+
+        // Real-time low-stock alert to admin when quantity drops at or below threshold
+        int threshold = Math.max(HARD_LOW_STOCK_MIN, item.getLowStockThreshold() == null ? 0 : item.getLowStockThreshold());
+        if (saved.getQuantity() <= threshold) {
+            sendLowStockAlertToAdmins(saved);
+        }
+
+        return saved;
+    }
+
+    private void sendLowStockAlertToAdmins(InventoryItem item) {
+        try {
+            List<User> admins = userRepository.findByRoles_Name("ROLE_ADMIN");
+            if (admins.isEmpty()) return;
+
+            Map<String, Object> model = new HashMap<>();
+            model.put("productName", item.getProductName());
+            model.put("sku", item.getSku());
+            model.put("currentQuantity", item.getQuantity());
+            model.put("threshold", Math.max(HARD_LOW_STOCK_MIN, item.getLowStockThreshold() == null ? 0 : item.getLowStockThreshold()));
+            model.put("location", item.getLocation());
+
+            for (User admin : admins) {
+                mailService.sendEmail(
+                        admin.getEmail(),
+                        "⚠ Low Stock Alert: " + item.getProductName(),
+                        "low-stock-alert",
+                        model
+                );
+            }
+            logger.info("Low-stock alert sent for SKU {} (qty: {})", item.getSku(), item.getQuantity());
+        } catch (Exception e) {
+            logger.error("Failed to send low-stock alert for {}", item.getSku(), e);
+        }
     }
 }

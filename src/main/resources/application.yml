@@ -42,7 +42,7 @@ app:
     sales-rate: 0.18
   password-reset:
     expiration-minutes: 30
-    url: ${PASSWORD_RESET_URL:http://localhost:5173/reset-password}
+    url: ${PASSWORD_RESET_URL:http://localhost:5173}
   mfa:
     expiration-minutes: 10
 

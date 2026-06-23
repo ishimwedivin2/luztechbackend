@@ -1,6 +1,8 @@
 package com.luztechnology.product.service;
 
 import com.luztechnology.common.exception.ResourceNotFoundException;
+import com.luztechnology.inventory.entity.InventoryItem;
+import com.luztechnology.inventory.repository.InventoryItemRepository;
 import com.luztechnology.product.entity.Category;
 import com.luztechnology.product.entity.Discount;
 import com.luztechnology.product.entity.Product;
@@ -32,6 +34,7 @@ public class ProductService {
     private final DiscountRepository discountRepository;
     private final ProductImageRepository productImageRepository;
     private final FileStorageService fileStorageService;
+    private final InventoryItemRepository inventoryItemRepository;
 
     @Transactional(readOnly = true)
     public List<Product> getAllProducts() {
@@ -61,6 +64,18 @@ public class ProductService {
                 .discountPercentage(p.getDiscount() != null ? p.getDiscount().getDiscountPercentage() : null)
                 .discountName(p.getDiscount() != null ? p.getDiscount().getName() : null)
                 .build();
+    }
+
+    private void ensureInventoryItem(Product product) {
+        if (product.getSku() == null) return;
+        if (inventoryItemRepository.findBySku(product.getSku()).isPresent()) return;
+        inventoryItemRepository.save(InventoryItem.builder()
+                .sku(product.getSku())
+                .productName(product.getName())
+                .quantity(0)
+                .lowStockThreshold(5)
+                .location("Main Warehouse")
+                .build());
     }
 
     private com.luztechnology.product.dto.ProductImageResponse toImageDto(ProductImage image) {
@@ -123,7 +138,9 @@ public class ProductService {
 
     @Transactional
     public Product createProduct(Product product) {
-        return productRepository.save(product);
+        Product saved = productRepository.save(product);
+        ensureInventoryItem(saved);
+        return saved;
     }
 
     @Transactional
@@ -139,6 +156,7 @@ public class ProductService {
 
         productImageRepository.save(image);
         savedProduct.getImages().add(image);
+        ensureInventoryItem(savedProduct);
 
         return savedProduct;
     }
