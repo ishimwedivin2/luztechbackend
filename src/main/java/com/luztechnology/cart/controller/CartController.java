@@ -73,11 +73,21 @@ public class CartController {
     }
 
     @PostMapping("/checkout")
-    public ResponseEntity<ApiResponse<Order>> checkout(
+    public ResponseEntity<ApiResponse<com.luztechnology.order.dto.OrderSummaryResponse>> checkout(
             @AuthenticationPrincipal UserDetailsImpl userDetails,
             @Valid @RequestBody CheckoutRequest request) {
         Order order = cartService.checkout(getCurrentUser(userDetails), request);
-        return ResponseEntity.ok(ApiResponse.success("Order created from cart", order));
+        com.luztechnology.order.dto.OrderSummaryResponse summary =
+                com.luztechnology.order.dto.OrderSummaryResponse.builder()
+                        .id(order.getId())
+                        .orderNumber(order.getOrderNumber())
+                        .status(order.getStatus() != null ? order.getStatus().name() : null)
+                        .totalAmount(order.getTotalAmount())
+                        .taxRate(order.getTaxRate())
+                        .paymentMethod(order.getPaymentMethod())
+                        .shippingAddress(order.getShippingAddress())
+                        .build();
+        return ResponseEntity.ok(ApiResponse.success("Order created from cart", summary));
     }
 
     private User getCurrentUser(UserDetailsImpl userDetails) {

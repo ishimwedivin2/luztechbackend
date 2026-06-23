@@ -1,7 +1,9 @@
 package com.luztechnology.user.controller;
 
 import com.luztechnology.common.dto.ApiResponse;
+import com.luztechnology.product.dto.ProductResponse;
 import com.luztechnology.product.entity.Product;
+import com.luztechnology.product.service.ProductService;
 import com.luztechnology.security.services.UserDetailsImpl;
 import com.luztechnology.user.entity.User;
 import com.luztechnology.user.entity.WishlistItem;
@@ -22,6 +24,7 @@ public class WishlistController {
 
     private final WishlistService wishlistService;
     private final UserRepository userRepository;
+    private final ProductService productService;
 
     private User getCurrentUser() {
         UserDetailsImpl userDetails = (UserDetailsImpl) SecurityContextHolder.getContext().getAuthentication()
@@ -30,17 +33,21 @@ public class WishlistController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<WishlistItem>>> getWishlist() {
-        return ResponseEntity.ok(ApiResponse.success(wishlistService.getWishlist(getCurrentUser())));
+    public ResponseEntity<ApiResponse<List<ProductResponse>>> getWishlist() {
+        List<ProductResponse> dtos = wishlistService.getWishlist(getCurrentUser())
+                .stream()
+                .map(item -> productService.toDto(item.getProduct()))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(dtos));
     }
 
     @PostMapping("/{productId}")
-    public ResponseEntity<ApiResponse<WishlistItem>> addToWishlist(@PathVariable UUID productId) {
+    public ResponseEntity<ApiResponse<Void>> addToWishlist(@PathVariable UUID productId) {
         WishlistItem item = wishlistService.addToWishlist(getCurrentUser(), productId);
         if (item == null) {
             return ResponseEntity.ok(ApiResponse.success("Product already in wishlist", null));
         }
-        return ResponseEntity.ok(ApiResponse.success("Added to wishlist", item));
+        return ResponseEntity.ok(ApiResponse.success("Added to wishlist", null));
     }
 
     @DeleteMapping("/{productId}")
@@ -55,9 +62,12 @@ public class WishlistController {
     }
 
     @GetMapping("/recommendations")
-    public ResponseEntity<ApiResponse<List<Product>>> getRecommendations(
+    public ResponseEntity<ApiResponse<List<ProductResponse>>> getRecommendations(
             @RequestParam(defaultValue = "10") int limit) {
-        return ResponseEntity.ok(ApiResponse.success("Recommendations retrieved",
-                wishlistService.getRecommendations(getCurrentUser(), limit)));
+        List<ProductResponse> dtos = wishlistService.getRecommendations(getCurrentUser(), limit)
+                .stream()
+                .map(productService::toDto)
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success("Recommendations retrieved", dtos));
     }
 }

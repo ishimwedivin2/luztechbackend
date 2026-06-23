@@ -1,5 +1,6 @@
 package com.luztechnology.user.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.luztechnology.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
@@ -15,6 +16,7 @@ import java.util.Set;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class User extends BaseEntity {
 
     @Column(nullable = false, unique = true)

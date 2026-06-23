@@ -1,5 +1,6 @@
 package com.luztechnology.order.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.luztechnology.common.entity.BaseEntity;
 import com.luztechnology.user.entity.User;
 import jakarta.persistence.*;
@@ -23,10 +24,12 @@ public class Order extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "cart", "wishlistItems", "roles", "password"})
     private User customer;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cashier_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "cart", "wishlistItems", "roles", "password"})
     private User cashier;
 
     @Enumerated(EnumType.STRING)
