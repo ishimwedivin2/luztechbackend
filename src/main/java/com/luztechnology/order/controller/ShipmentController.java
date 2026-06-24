@@ -18,7 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
+import org.springframework.data.domain.Page;
+
 import java.util.UUID;
 
 @RestController
@@ -30,15 +31,16 @@ public class ShipmentController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    public ResponseEntity<ApiResponse<List<Shipment>>> getShipments(
-            @RequestParam(required = false) String status) {
-        return ResponseEntity.ok(ApiResponse.success(shipmentService.getShipments(status)));
+    public ResponseEntity<ApiResponse<Page<Shipment>>> getShipments(
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(ApiResponse.success(shipmentService.getShipments(status, page, size)));
     }
 
-    @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
-    public ResponseEntity<ApiResponse<Shipment>> getShipment(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.success(shipmentService.getShipmentById(id)));
+    @GetMapping("/track/{trackingNumber}")
+    public ResponseEntity<ApiResponse<Shipment>> trackShipment(@PathVariable String trackingNumber) {
+        return ResponseEntity.ok(ApiResponse.success(shipmentService.getShipmentByTrackingNumber(trackingNumber)));
     }
 
     @GetMapping("/order/{orderId}")
@@ -47,9 +49,10 @@ public class ShipmentController {
         return ResponseEntity.ok(ApiResponse.success(shipmentService.getShipmentByOrderId(orderId)));
     }
 
-    @GetMapping("/track/{trackingNumber}")
-    public ResponseEntity<ApiResponse<Shipment>> trackShipment(@PathVariable String trackingNumber) {
-        return ResponseEntity.ok(ApiResponse.success(shipmentService.getShipmentByTrackingNumber(trackingNumber)));
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
+    public ResponseEntity<ApiResponse<Shipment>> getShipment(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(shipmentService.getShipmentById(id)));
     }
 
     @PostMapping

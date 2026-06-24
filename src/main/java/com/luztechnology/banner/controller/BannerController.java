@@ -4,10 +4,12 @@ import com.luztechnology.banner.dto.BannerRequest;
 import com.luztechnology.banner.entity.Banner;
 import com.luztechnology.banner.service.BannerService;
 import com.luztechnology.common.dto.ApiResponse;
+import com.luztechnology.common.service.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -18,6 +20,7 @@ import java.util.UUID;
 public class BannerController {
 
     private final BannerService bannerService;
+    private final FileStorageService fileStorageService;
 
     // Public — homepage fetches active banners without auth
     @GetMapping
@@ -43,10 +46,53 @@ public class BannerController {
         return ResponseEntity.ok(ApiResponse.success("Banner created", bannerService.createBanner(request)));
     }
 
+    @PostMapping("/upload")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<Banner>> createBannerWithImage(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("title") String title,
+            @RequestParam(value = "subtitle", required = false) String subtitle,
+            @RequestParam(value = "linkUrl", required = false) String linkUrl,
+            @RequestParam(value = "buttonText", required = false) String buttonText,
+            @RequestParam(value = "tagLabel", required = false) String tagLabel,
+            @RequestParam(value = "displayOrder", defaultValue = "0") int displayOrder,
+            @RequestParam(value = "active", defaultValue = "true") boolean active) {
+        String fileName = fileStorageService.storeFile(file, "banners");
+        BannerRequest request = BannerRequest.builder()
+                .title(title).subtitle(subtitle).linkUrl(linkUrl)
+                .buttonText(buttonText).tagLabel(tagLabel)
+                .imageUrl("/uploads/" + fileName)
+                .displayOrder(displayOrder).active(active)
+                .build();
+        return ResponseEntity.ok(ApiResponse.success("Banner created", bannerService.createBanner(request)));
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<Banner>> updateBanner(@PathVariable UUID id,
             @RequestBody BannerRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Banner updated", bannerService.updateBanner(id, request)));
+    }
+
+    @PutMapping("/{id}/upload")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<ApiResponse<Banner>> updateBannerWithImage(
+            @PathVariable UUID id,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("title") String title,
+            @RequestParam(value = "subtitle", required = false) String subtitle,
+            @RequestParam(value = "linkUrl", required = false) String linkUrl,
+            @RequestParam(value = "buttonText", required = false) String buttonText,
+            @RequestParam(value = "tagLabel", required = false) String tagLabel,
+            @RequestParam(value = "displayOrder", defaultValue = "0") int displayOrder,
+            @RequestParam(value = "active", defaultValue = "true") boolean active) {
+        String fileName = fileStorageService.storeFile(file, "banners");
+        BannerRequest request = BannerRequest.builder()
+                .title(title).subtitle(subtitle).linkUrl(linkUrl)
+                .buttonText(buttonText).tagLabel(tagLabel)
+                .imageUrl("/uploads/" + fileName)
+                .displayOrder(displayOrder).active(active)
+                .build();
         return ResponseEntity.ok(ApiResponse.success("Banner updated", bannerService.updateBanner(id, request)));
     }
 

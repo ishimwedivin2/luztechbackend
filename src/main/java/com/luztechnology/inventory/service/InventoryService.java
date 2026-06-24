@@ -16,6 +16,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.dao.DataIntegrityViolationException;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -35,25 +37,25 @@ public class InventoryService {
     // ── Auto-sync: create InventoryItem for any Product that doesn't have one yet ──
     @Transactional
     public void syncFromProducts() {
-        List<InventoryItem> existing = inventoryItemRepository.findAll();
-        Set<String> existingSkus = existing.stream()
-                .map(InventoryItem::getSku)
-                .collect(Collectors.toSet());
-
-        List<InventoryItem> toCreate = productRepository.findAll().stream()
-                .filter(p -> p.getSku() != null && !existingSkus.contains(p.getSku()))
-                .map(p -> InventoryItem.builder()
+        int synced = 0;
+        for (Product p : productRepository.findAll()) {
+            if (p.getSku() == null) continue;
+            if (inventoryItemRepository.findBySku(p.getSku()).isPresent()) continue;
+            try {
+                inventoryItemRepository.save(InventoryItem.builder()
                         .sku(p.getSku())
                         .productName(p.getName())
                         .quantity(0)
                         .lowStockThreshold(HARD_LOW_STOCK_MIN)
                         .location("Main Warehouse")
-                        .build())
-                .collect(Collectors.toList());
-
-        if (!toCreate.isEmpty()) {
-            inventoryItemRepository.saveAll(toCreate);
-            logger.info("Auto-synced {} inventory items from products", toCreate.size());
+                        .build());
+                synced++;
+            } catch (DataIntegrityViolationException ignored) {
+                // another thread already inserted this SKU — safe to skip
+            }
+        }
+        if (synced > 0) {
+            logger.info("Auto-synced {} inventory items from products", synced);
         }
     }
 
@@ -154,7 +156,14 @@ public class InventoryService {
 
     @Transactional
     public InventoryItem adjustStock(UUID itemId, int quantityChange, String reason, String type, String referenceId) {
-        InventoryItem item = getItemById(itemId);
+        InventoryItem item = inventoryItemRepository.findByIdForUpdate(itemId)
+                .orElseThrow(() -> new ResourceNotFoundException("Inventory Item not found for id: " + itemId));
+
+        int newQuantity = item.getQuantity() + quantityChange;
+        if (newQuantity < 0) {
+            throw new IllegalArgumentException("Insufficient stock for item: " + item.getProductName()
+                    + " (available: " + item.getQuantity() + ", requested: " + (-quantityChange) + ")");
+        }
 
         StockMovement movement = StockMovement.builder()
                 .inventoryItem(item)
@@ -165,11 +174,7 @@ public class InventoryService {
                 .build();
         stockMovementRepository.save(movement);
 
-        item.setQuantity(item.getQuantity() + quantityChange);
-        if (item.getQuantity() < 0) {
-            throw new IllegalArgumentException("Insufficient stock for item: " + item.getProductName());
-        }
-
+        item.setQuantity(newQuantity);
         InventoryItem saved = inventoryItemRepository.save(item);
 
         // Real-time low-stock alert to admin when quantity drops at or below threshold

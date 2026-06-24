@@ -7,6 +7,10 @@ import com.luztechnology.order.entity.OrderStatus;
 import com.luztechnology.order.entity.Shipment;
 import com.luztechnology.order.repository.ShipmentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,11 +31,16 @@ public class ShipmentService {
     private final OrderService orderService;
 
     @Transactional(readOnly = true)
-    public List<Shipment> getShipments(String status) {
-        if (status == null) {
-            return shipmentRepository.findAll();
+    public Page<Shipment> getShipments(String status, int page, int size) {
+        var pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        if (status == null || status.isBlank()) {
+            return shipmentRepository.findAll(pageable);
         }
-        return shipmentRepository.findByStatus(status.toUpperCase());
+        List<Shipment> filtered = shipmentRepository.findByStatus(status.toUpperCase());
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), filtered.size());
+        List<Shipment> pageContent = start > filtered.size() ? List.of() : filtered.subList(start, end);
+        return new PageImpl<>(pageContent, pageable, filtered.size());
     }
 
     @Transactional(readOnly = true)

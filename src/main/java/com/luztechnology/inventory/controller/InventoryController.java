@@ -6,6 +6,8 @@ import com.luztechnology.inventory.entity.StockMovement;
 import com.luztechnology.inventory.repository.StockMovementRepository;
 import com.luztechnology.inventory.service.InventoryService;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
@@ -21,13 +23,19 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class InventoryController {
 
+    private static final Logger logger = LoggerFactory.getLogger(InventoryController.class);
+
     private final InventoryService inventoryService;
     private final StockMovementRepository stockMovementRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<List<InventoryItem>>> getAllItems() {
-        inventoryService.syncFromProducts(); // ensure all products have inventory records
+        try {
+            inventoryService.syncFromProducts();
+        } catch (Exception e) {
+            logger.warn("syncFromProducts failed, proceeding with existing data: {}", e.getMessage());
+        }
         return ResponseEntity.ok(ApiResponse.success(inventoryService.getAllItems()));
     }
 

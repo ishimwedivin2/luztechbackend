@@ -1,5 +1,6 @@
 package com.luztechnology.payment.controller;
 
+import com.luztechnology.cart.service.CartService;
 import com.luztechnology.common.dto.ApiResponse;
 import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.entity.OrderStatus;
@@ -29,6 +30,7 @@ public class PaymentWebhookController {
     private final List<PaymentService> paymentServices;
     private final OrderService orderService;
     private final PaymentReconciliationService reconciliationService;
+    private final CartService cartService;
 
     @PostMapping("/initiate/{orderId}")
     public ResponseEntity<ApiResponse<PaymentStatusResponse>> initiatePayment(
@@ -50,6 +52,9 @@ public class PaymentWebhookController {
             order = orderService.updateOrderStatus(orderId, OrderStatus.PAID);
             reconciliationService.recordInitiated(order, paymentMethod, paymentReference);
             reconciliationService.recordWebhook(order, paymentMethod, true);
+            if (order.getCustomer() != null) {
+                cartService.clearCart(order.getCustomer());
+            }
             logger.info("Order {} immediately confirmed as PAID via {}", orderId, paymentMethod);
         } else {
             orderService.updateOrderStatus(orderId, OrderStatus.PROCESSING);
@@ -107,6 +112,9 @@ public class PaymentWebhookController {
                         if (confirmed) {
                             order = orderService.updateOrderStatus(orderId, OrderStatus.PAID);
                             reconciliationService.recordWebhook(order, "MTN_MOMO", true);
+                            if (order.getCustomer() != null) {
+                                cartService.clearCart(order.getCustomer());
+                            }
                             alreadyPaid = true;
                             logger.info("MTN status poll confirmed PAID for order {}", orderId);
                         }
@@ -146,8 +154,11 @@ public class PaymentWebhookController {
         boolean isVerified = selectedService.verifyWebhook(payload, signature);
 
         if (isVerified) {
-            orderService.updateOrderStatus(orderId, OrderStatus.PAID);
-            reconciliationService.recordWebhook(orderService.getOrderById(orderId), provider, true);
+            Order paidOrder = orderService.updateOrderStatus(orderId, OrderStatus.PAID);
+            reconciliationService.recordWebhook(paidOrder, provider, true);
+            if (paidOrder.getCustomer() != null) {
+                cartService.clearCart(paidOrder.getCustomer());
+            }
             logger.info("Order {} marked as PAID via {} webhook", orderId, provider);
             return ResponseEntity.ok(ApiResponse.success("Webhook processed successfully", null));
         } else {

@@ -128,10 +128,7 @@ public class CartService {
             }
         }
 
-        Order order = orderService.processOrderForCustomer(user, orderRequest);
-        cart.getItems().clear();
-        cartRepository.save(cart);
-        return order;
+        return orderService.processOrderForCustomer(user, orderRequest);
     }
 
     private Cart getOrCreateCart(User user) {

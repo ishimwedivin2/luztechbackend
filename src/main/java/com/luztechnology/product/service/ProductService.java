@@ -187,6 +187,13 @@ public class ProductService {
     }
 
     @Transactional
+    public Product removeDiscount(UUID productId) {
+        Product product = getProductById(productId);
+        product.setDiscount(null);
+        return productRepository.save(product);
+    }
+
+    @Transactional
     public Product updateProduct(UUID id, Product details) {
         Product product = getProductById(id);
         product.setName(details.getName());
