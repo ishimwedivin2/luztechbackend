@@ -6,6 +6,7 @@ import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.entity.OrderItem;
 import com.luztechnology.order.entity.OrderStatus;
 import com.luztechnology.order.entity.ReturnRequest;
+import com.luztechnology.order.repository.OrderRepository;
 import com.luztechnology.order.repository.ReturnRequestRepository;
 import com.luztechnology.payment.dto.PaymentRefundResult;
 import com.luztechnology.payment.service.PaymentService;
@@ -31,12 +32,31 @@ public class ReturnService {
     private static final String COMPLETED = "COMPLETED";
 
     private final ReturnRequestRepository returnRequestRepository;
+    private final OrderRepository orderRepository;
     private final OrderService orderService;
     private final InventoryService inventoryService;
     private final List<PaymentService> paymentServices;
 
-    @Transactional(readOnly = true)
+    @Transactional
+    public void syncRefundedOrders() {
+        orderRepository.findByStatus(OrderStatus.REFUNDED).forEach(order -> {
+            boolean exists = returnRequestRepository.findByOrderId(order.getId()).isPresent();
+            if (!exists) {
+                returnRequestRepository.save(ReturnRequest.builder()
+                        .order(order)
+                        .reason("Refunded by admin")
+                        .status(COMPLETED)
+                        .requestedAmount(order.getTotalAmount())
+                        .refundedAmount(order.getTotalAmount())
+                        .completedAt(order.getUpdatedAt() != null ? order.getUpdatedAt() : LocalDateTime.now())
+                        .build());
+            }
+        });
+    }
+
+    @Transactional
     public List<ReturnRequest> getReturns(String status) {
+        syncRefundedOrders();
         if (status == null) {
             return returnRequestRepository.findAll();
         }

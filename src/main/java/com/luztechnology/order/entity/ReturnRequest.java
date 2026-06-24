@@ -1,5 +1,6 @@
 package com.luztechnology.order.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.luztechnology.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
@@ -16,8 +17,9 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class ReturnRequest extends BaseEntity {
 
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "order_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "orderItems"})
     private Order order;
 
     @Column(nullable = false)

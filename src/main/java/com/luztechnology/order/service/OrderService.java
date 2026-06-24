@@ -11,9 +11,11 @@ import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.entity.OrderItem;
 import com.luztechnology.order.entity.OrderStatus;
 import com.luztechnology.order.entity.OrderTrackingEvent;
+import com.luztechnology.order.entity.ReturnRequest;
 import com.luztechnology.order.entity.Shipment;
 import com.luztechnology.order.repository.OrderRepository;
 import com.luztechnology.order.repository.OrderTrackingEventRepository;
+import com.luztechnology.order.repository.ReturnRequestRepository;
 import com.luztechnology.order.repository.ShipmentRepository;
 import com.luztechnology.product.entity.Product;
 import com.luztechnology.product.entity.ProductStatus;
@@ -49,6 +51,7 @@ public class OrderService {
     private final MailService mailService;
     private final OrderTrackingEventRepository trackingEventRepository;
     private final ShipmentRepository shipmentRepository;
+    private final ReturnRequestRepository returnRequestRepository;
 
     @Transactional(readOnly = true)
     public List<Order> getAllOrders() {
@@ -192,6 +195,23 @@ public class OrderService {
         if (newStatus == OrderStatus.PAID) {
             taxService.recordTaxForPaidOrder(savedOrder);
             sendReceiptEmail(savedOrder);
+        }
+
+        // Auto-create a ReturnRequest when an order is directly set to REFUNDED
+        // (covers admin manually refunding without going through the return workflow)
+        if (newStatus == OrderStatus.REFUNDED) {
+            boolean alreadyExists = returnRequestRepository.findByOrderId(savedOrder.getId()).isPresent();
+            if (!alreadyExists) {
+                ReturnRequest autoReturn = ReturnRequest.builder()
+                        .order(savedOrder)
+                        .reason("Refunded by admin")
+                        .status("COMPLETED")
+                        .requestedAmount(savedOrder.getTotalAmount())
+                        .refundedAmount(savedOrder.getTotalAmount())
+                        .completedAt(LocalDateTime.now())
+                        .build();
+                returnRequestRepository.save(autoReturn);
+            }
         }
 
         return savedOrder;
