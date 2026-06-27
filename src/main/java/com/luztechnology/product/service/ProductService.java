@@ -36,6 +36,7 @@ public class ProductService {
     private final ProductImageRepository productImageRepository;
     private final FileStorageService fileStorageService;
     private final InventoryItemRepository inventoryItemRepository;
+    private final com.luztechnology.product.repository.ProductReviewRepository productReviewRepository;
 
     @Transactional(readOnly = true)
     public List<Product> getAllProducts() {
@@ -51,6 +52,8 @@ public class ProductService {
         java.util.List<com.luztechnology.product.dto.ProductImageResponse> images = p.getImages() == null
                 ? java.util.List.of()
                 : p.getImages().stream().map(this::toImageDto).toList();
+        long reviewsCount = productReviewRepository.countByProductId(p.getId());
+        Double averageRating = productReviewRepository.findAverageRatingByProductId(p.getId());
         return com.luztechnology.product.dto.ProductResponse.builder()
                 .id(p.getId())
                 .name(p.getName())
@@ -64,6 +67,8 @@ public class ProductService {
                 .featured(p.isFeatured())
                 .discountPercentage(p.getDiscount() != null ? p.getDiscount().getDiscountPercentage() : null)
                 .discountName(p.getDiscount() != null ? p.getDiscount().getName() : null)
+                .reviewsCount(reviewsCount)
+                .averageRating(averageRating)
                 .build();
     }
 

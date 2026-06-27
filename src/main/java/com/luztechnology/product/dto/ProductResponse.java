@@ -29,4 +29,6 @@ public class ProductResponse {
     private boolean featured;
     private BigDecimal discountPercentage;
     private String discountName;
+    private long reviewsCount;
+    private Double averageRating;
 }
