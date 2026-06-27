@@ -20,12 +20,12 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/payments/reconciliation")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
 public class PaymentReconciliationController {
 
     private final PaymentReconciliationService reconciliationService;
 
     @GetMapping("/transactions")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT')")
     public ResponseEntity<ApiResponse<List<PaymentTransaction>>> getTransactions(
             @RequestParam(required = false) UUID orderId) {
         return ResponseEntity.ok(ApiResponse.success("Payment transactions retrieved",
@@ -33,18 +33,21 @@ public class PaymentReconciliationController {
     }
 
     @GetMapping("/summary")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getSummary() {
         return ResponseEntity.ok(ApiResponse.success("Payment reconciliation summary retrieved",
                 reconciliationService.getSummary()));
     }
 
     @PatchMapping("/transactions/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<PaymentTransaction>> reconcileTransaction(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success("Payment transaction reconciled",
                 reconciliationService.reconcileTransaction(id)));
     }
 
     @PatchMapping("/run")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> reconcileAll() {
         return ResponseEntity.ok(ApiResponse.success("Payment reconciliation completed",
                 reconciliationService.reconcileAll()));

@@ -73,31 +73,27 @@ public class ReceiptService {
         table.addCell(headCell("Unit Price"));
         table.addCell(headCell("Subtotal"));
 
-        BigDecimal taxMultiplier = receipt.getTaxRate() != null
-                ? BigDecimal.ONE.add(receipt.getTaxRate())
-                : new BigDecimal("1.18");
         for (ReceiptItemResponse item : receipt.getItems()) {
-            BigDecimal unitInclTax = item.getUnitPrice().multiply(taxMultiplier).setScale(0, RoundingMode.HALF_UP);
-            BigDecimal subInclTax  = item.getSubTotal().multiply(taxMultiplier).setScale(0, RoundingMode.HALF_UP);
             table.addCell(new PdfPCell(new Phrase(item.getProductName(), bodyFont)));
             table.addCell(new PdfPCell(new Phrase(String.valueOf(item.getQuantity()), bodyFont)));
-            table.addCell(new PdfPCell(new Phrase(unitInclTax.toString(), bodyFont)));
-            table.addCell(new PdfPCell(new Phrase(subInclTax.toString(), bodyFont)));
+            table.addCell(new PdfPCell(new Phrase(formatAmount(item.getUnitPrice()), bodyFont)));
+            table.addCell(new PdfPCell(new Phrase(formatAmount(item.getSubTotal()), bodyFont)));
         }
 
         document.add(table);
         document.add(new Paragraph(" "));
+        addAmountLine(document, "Subtotal: ", receipt.getSubTotalAmount(), bodyFont);
         if (receipt.getDiscountAmount() != null && receipt.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
             String discountLabel = receipt.getCouponCode() != null
                     ? "Discount (" + receipt.getCouponCode() + "): "
                     : "Discount: ";
-            addAmountLine(document, discountLabel, receipt.getDiscountAmount().negate(), sectionFont);
+            addAmountLine(document, discountLabel, receipt.getDiscountAmount().negate(), bodyFont);
         }
-        addAmountLine(document, "Total Paid: ", receipt.getTotalAmount(), headerFont);
         BigDecimal taxRatePct = receipt.getTaxRate() != null
                 ? receipt.getTaxRate().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP)
                 : BigDecimal.valueOf(18);
-        addAmountLine(document, "Includes VAT (" + taxRatePct.toPlainString() + "%): ", receipt.getTaxAmount(), bodyFont);
+        addAmountLine(document, "Tax (" + taxRatePct.toPlainString() + "%): ", receipt.getTaxAmount(), bodyFont);
+        addAmountLine(document, "Total Paid: ", receipt.getTotalAmount(), headerFont);
 
         document.close();
         return out.toByteArray();
@@ -156,8 +152,13 @@ public class ReceiptService {
         return cell;
     }
 
+    private String formatAmount(BigDecimal amount) {
+        if (amount == null) return "0";
+        return "RWF " + String.format("%,.0f", amount);
+    }
+
     private void addAmountLine(Document document, String label, BigDecimal amount, Font font) throws DocumentException {
-        Paragraph paragraph = new Paragraph(label + amount, font);
+        Paragraph paragraph = new Paragraph(label + formatAmount(amount), font);
         paragraph.setAlignment(Element.ALIGN_RIGHT);
         document.add(paragraph);
     }

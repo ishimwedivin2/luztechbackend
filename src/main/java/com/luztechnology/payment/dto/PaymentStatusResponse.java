@@ -21,4 +21,5 @@ public class PaymentStatusResponse {
     private boolean paid;
     private String message;
     private BigDecimal totalAmount;
+    private String clientSecret; // Stripe only — used by frontend Stripe.js to confirm payment
 }

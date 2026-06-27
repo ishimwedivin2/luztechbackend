@@ -10,9 +10,15 @@ import com.luztechnology.payment.entity.PaymentTransaction;
 import com.luztechnology.payment.service.MTNPaymentService;
 import com.luztechnology.payment.service.PaymentReconciliationService;
 import com.luztechnology.payment.service.PaymentService;
+import com.luztechnology.payment.service.StripePaymentService;
+import com.stripe.exception.StripeException;
+import com.stripe.model.Event;
+import com.stripe.model.PaymentIntent;
+import com.stripe.net.Webhook;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,6 +37,9 @@ public class PaymentWebhookController {
     private final OrderService orderService;
     private final PaymentReconciliationService reconciliationService;
     private final CartService cartService;
+
+    @Value("${payment.stripe.webhook-secret:whsec_placeholder}")
+    private String stripeWebhookSecret;
 
     @PostMapping("/initiate/{orderId}")
     public ResponseEntity<ApiResponse<PaymentStatusResponse>> initiatePayment(
@@ -62,17 +71,25 @@ public class PaymentWebhookController {
             logger.info("Order {} set to PROCESSING, awaiting {} webhook", orderId, paymentMethod);
         }
 
+        // For Stripe, paymentReference holds the client_secret — expose it separately
+        boolean isStripe = "STRIPE".equalsIgnoreCase(paymentMethod);
+        String clientSecret = isStripe ? paymentReference : null;
+        String publicReference = isStripe ? null : paymentReference;
+
         PaymentStatusResponse response = PaymentStatusResponse.builder()
                 .orderId(order.getId())
                 .orderNumber(order.getOrderNumber())
                 .orderStatus(immediatelyPaid ? "PAID" : "PROCESSING")
                 .paymentMethod(paymentMethod)
-                .paymentReference(paymentReference)
+                .paymentReference(publicReference)
+                .clientSecret(clientSecret)
                 .paid(immediatelyPaid)
                 .totalAmount(order.getTotalAmount())
                 .message(immediatelyPaid
                         ? "Payment confirmed successfully"
-                        : "Payment initiated — please approve on your device")
+                        : isStripe
+                            ? "Use the clientSecret to confirm payment with Stripe.js"
+                            : "Payment initiated — please approve on your device")
                 .build();
 
         return ResponseEntity.ok(ApiResponse.success("Payment initiated", response));
@@ -139,6 +156,46 @@ public class PaymentWebhookController {
         return ResponseEntity.ok(ApiResponse.success("Payment status retrieved", response));
     }
 
+    /**
+     * Called by frontend immediately after Stripe.js confirmCardPayment succeeds.
+     * Verifies the PaymentIntent server-side with Stripe API (no CLI/webhook needed).
+     */
+    @PostMapping("/stripe/confirm/{orderId}")
+    public ResponseEntity<ApiResponse<PaymentStatusResponse>> confirmStripePayment(
+            @PathVariable UUID orderId,
+            @RequestParam String paymentIntentId) {
+        try {
+            PaymentIntent intent = PaymentIntent.retrieve(paymentIntentId);
+            if (!"succeeded".equals(intent.getStatus())) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Payment not confirmed by Stripe: " + intent.getStatus()));
+            }
+            Order order = orderService.getOrderById(orderId);
+            if (order.getStatus() == OrderStatus.PAID) {
+                // Already processed (e.g. webhook arrived first)
+                PaymentStatusResponse resp = PaymentStatusResponse.builder()
+                        .orderId(order.getId()).orderNumber(order.getOrderNumber())
+                        .orderStatus("PAID").paid(true).totalAmount(order.getTotalAmount())
+                        .message("Payment already confirmed").build();
+                return ResponseEntity.ok(ApiResponse.success("Already paid", resp));
+            }
+            orderService.updatePaymentDetails(orderId, "STRIPE", intent.getId());
+            Order paidOrder = orderService.updateOrderStatus(orderId, OrderStatus.PAID);
+            reconciliationService.recordWebhook(paidOrder, "STRIPE", true);
+            if (paidOrder.getCustomer() != null) cartService.clearCart(paidOrder.getCustomer());
+            logger.info("Stripe payment confirmed server-side for order {}", orderId);
+
+            PaymentStatusResponse resp = PaymentStatusResponse.builder()
+                    .orderId(paidOrder.getId()).orderNumber(paidOrder.getOrderNumber())
+                    .orderStatus("PAID").paid(true).totalAmount(paidOrder.getTotalAmount())
+                    .message("Payment confirmed successfully").build();
+            return ResponseEntity.ok(ApiResponse.success("Payment confirmed", resp));
+        } catch (StripeException e) {
+            logger.error("Stripe server-side confirmation failed for order {}", orderId, e);
+            return ResponseEntity.badRequest().body(ApiResponse.error("Stripe verification failed: " + e.getMessage()));
+        }
+    }
+
     @PostMapping("/webhook/{provider}")
     public ResponseEntity<ApiResponse<String>> handleWebhook(
             @PathVariable String provider,
@@ -165,6 +222,47 @@ public class PaymentWebhookController {
             reconciliationService.recordWebhook(orderService.getOrderById(orderId), provider, false);
             logger.error("Failed to verify webhook payload for provider {}", provider);
             return ResponseEntity.badRequest().body(ApiResponse.error("Invalid webhook signature or payload"));
+        }
+    }
+
+    /**
+     * Stripe sends events here. Configure this URL in Stripe Dashboard:
+     * https://dashboard.stripe.com/webhooks  →  POST /api/payments/webhook/stripe
+     */
+    @PostMapping("/webhook/stripe")
+    public ResponseEntity<String> handleStripeWebhook(
+            @RequestBody String payload,
+            @RequestHeader("Stripe-Signature") String sigHeader) {
+        try {
+            Event event = Webhook.constructEvent(payload, sigHeader, stripeWebhookSecret);
+
+            if ("payment_intent.succeeded".equals(event.getType())) {
+                PaymentIntent intent = (PaymentIntent) event.getDataObjectDeserializer()
+                        .getObject().orElseThrow();
+                String orderIdStr = intent.getMetadata().get("orderId");
+                if (orderIdStr != null) {
+                    UUID orderId = UUID.fromString(orderIdStr);
+                    orderService.updatePaymentDetails(orderId, "STRIPE", intent.getId());
+                    Order paidOrder = orderService.updateOrderStatus(orderId, OrderStatus.PAID);
+                    reconciliationService.recordWebhook(paidOrder, "STRIPE", true);
+                    if (paidOrder.getCustomer() != null) cartService.clearCart(paidOrder.getCustomer());
+                    logger.info("Stripe payment_intent.succeeded — order {} marked PAID", orderId);
+                }
+            } else if ("payment_intent.payment_failed".equals(event.getType())) {
+                PaymentIntent intent = (PaymentIntent) event.getDataObjectDeserializer()
+                        .getObject().orElseThrow();
+                String orderIdStr = intent.getMetadata().get("orderId");
+                if (orderIdStr != null) {
+                    UUID orderId = UUID.fromString(orderIdStr);
+                    Order order = orderService.getOrderById(orderId);
+                    reconciliationService.recordWebhook(order, "STRIPE", false);
+                    logger.warn("Stripe payment failed for order {}", orderId);
+                }
+            }
+            return ResponseEntity.ok("received");
+        } catch (Exception e) {
+            logger.error("Stripe webhook error", e);
+            return ResponseEntity.badRequest().body("Webhook error: " + e.getMessage());
         }
     }
 }
