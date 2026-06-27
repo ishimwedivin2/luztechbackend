@@ -72,8 +72,10 @@ public class LiveChatController {
 
     @GetMapping("/sessions/{sessionId}/messages")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'EMPLOYEE', 'CUSTOMER')")
-    public ResponseEntity<ApiResponse<List<ChatMessageResponse>>> getMessages(@PathVariable UUID sessionId) {
-        return ResponseEntity.ok(ApiResponse.success(liveChatService.getMessages(sessionId)));
+    public ResponseEntity<ApiResponse<List<ChatMessageResponse>>> getMessages(
+            @AuthenticationPrincipal UserDetailsImpl userDetails,
+            @PathVariable UUID sessionId) {
+        return ResponseEntity.ok(ApiResponse.success(liveChatService.getMessages(sessionId, getCurrentUser(userDetails))));
     }
 
     @PostMapping("/sessions/{sessionId}/messages")
@@ -88,8 +90,11 @@ public class LiveChatController {
 
     @PostMapping("/sessions/{sessionId}/close")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'CUSTOMER')")
-    public ResponseEntity<ApiResponse<ChatSession>> closeSession(@PathVariable UUID sessionId) {
-        return ResponseEntity.ok(ApiResponse.success("Chat session closed", liveChatService.closeSession(sessionId)));
+    public ResponseEntity<ApiResponse<ChatSession>> closeSession(
+            @AuthenticationPrincipal UserDetailsImpl userDetails,
+            @PathVariable UUID sessionId) {
+        return ResponseEntity.ok(ApiResponse.success("Chat session closed",
+                liveChatService.closeSession(sessionId, getCurrentUser(userDetails))));
     }
 
     private User getCurrentUser(UserDetailsImpl userDetails) {

@@ -8,4 +8,5 @@ import java.util.UUID;
 
 @Repository
 public interface SatisfactionSurveyRepository extends JpaRepository<SatisfactionSurvey, UUID> {
+    boolean existsByTicketId(UUID ticketId);
 }

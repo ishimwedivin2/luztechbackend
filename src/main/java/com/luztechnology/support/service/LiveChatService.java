@@ -10,6 +10,7 @@ import com.luztechnology.user.entity.User;
 import com.luztechnology.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,8 +50,13 @@ public class LiveChatService {
     }
 
     @Transactional(readOnly = true)
-    public List<ChatMessageResponse> getMessages(UUID sessionId) {
-        getSession(sessionId);
+    public List<ChatMessageResponse> getMessages(UUID sessionId, User requestingUser) {
+        ChatSession session = getSession(sessionId);
+        boolean isSessionCustomer = session.getCustomer().getId().equals(requestingUser.getId());
+        boolean isStaff = hasAnyRole(requestingUser, "ROLE_ADMIN", "ROLE_SUPPORT_AGENT", "ROLE_EMPLOYEE");
+        if (!isSessionCustomer && !isStaff) {
+            throw new AccessDeniedException("You do not have access to this chat session");
+        }
         return chatMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId).stream()
                 .map(this::toResponse)
                 .toList();
@@ -78,6 +84,9 @@ public class LiveChatService {
         ChatSession session = getSession(sessionId);
         User agent = userRepository.findById(agentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Agent not found with id: " + agentId));
+        if (!hasAnyRole(agent, "ROLE_ADMIN", "ROLE_SUPPORT_AGENT")) {
+            throw new IllegalArgumentException("The specified user does not have a support agent role");
+        }
         session.setAgent(agent);
         session.setStatus(ASSIGNED);
         ChatSession savedSession = chatSessionRepository.save(session);
@@ -103,19 +112,34 @@ public class LiveChatService {
     }
 
     @Transactional
-    public ChatMessageResponse sendSocketMessage(UUID sessionId, UUID senderId, String message) {
-        User sender = userRepository.findById(senderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Sender not found with id: " + senderId));
+    public ChatMessageResponse sendSocketMessage(UUID sessionId, String senderEmail, String message) {
+        User sender = userRepository.findByEmail(senderEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("Sender not found: " + senderEmail));
         return sendMessage(sessionId, sender, message);
     }
 
     @Transactional
-    public ChatSession closeSession(UUID sessionId) {
+    public ChatSession closeSession(UUID sessionId, User requestingUser) {
         ChatSession session = getSession(sessionId);
+        boolean isSessionCustomer = session.getCustomer().getId().equals(requestingUser.getId());
+        boolean isStaff = hasAnyRole(requestingUser, "ROLE_ADMIN", "ROLE_SUPPORT_AGENT");
+        if (!isSessionCustomer && !isStaff) {
+            throw new AccessDeniedException("You are not allowed to close this chat session");
+        }
         session.setStatus(CLOSED);
         ChatSession savedSession = chatSessionRepository.save(session);
         messagingTemplate.convertAndSend("/topic/live-chat/sessions", savedSession);
         return savedSession;
+    }
+
+    private boolean hasAnyRole(User user, String... roleNames) {
+        return user.getRoles().stream()
+                .anyMatch(r -> {
+                    for (String roleName : roleNames) {
+                        if (r.getName().equals(roleName)) return true;
+                    }
+                    return false;
+                });
     }
 
     private ChatMessageResponse toResponse(ChatMessage message) {
@@ -129,4 +153,3 @@ public class LiveChatService {
                 .build();
     }
 }
-

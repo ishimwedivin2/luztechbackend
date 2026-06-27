@@ -9,8 +9,9 @@ public class OrderRequestDTO {
     private List<OrderItemDTO> items;
     private String shippingAddress;
     private String billingAddress;
-    private BigDecimal totalAmount;
     private String paymentMethod;
+    private BigDecimal discountAmount;
+    private String couponCode;
 
     @Data
     public static class OrderItemDTO {

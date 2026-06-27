@@ -64,8 +64,11 @@ public class AnalyticsService {
     }
 
     public Double getTotalRevenue(LocalDate startDate, LocalDate endDate) {
-        Double total = salesReportRepository.calculateTotalRevenueBetween(startDate, endDate);
-        return total != null ? total : 0.0;
+        return ordersBetween(startDate, endDate).stream()
+                .filter(o -> o.getStatus() != null && REVENUE_STATUSES.contains(o.getStatus()))
+                .map(this::safeAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .doubleValue();
     }
 
     public KpiDashboardResponse getFinancialDashboard() {

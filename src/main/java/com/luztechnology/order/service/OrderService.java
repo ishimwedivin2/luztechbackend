@@ -102,6 +102,8 @@ public class OrderService {
                 .cashier(cashier)
                 .status(status)
                 .subTotalAmount(BigDecimal.ZERO)
+                .discountAmount(BigDecimal.ZERO)
+                .couponCode(request.getCouponCode())
                 .taxAmount(BigDecimal.ZERO)
                 .taxRate(taxService.getTaxRate())
                 .totalAmount(BigDecimal.ZERO)
@@ -134,11 +136,17 @@ public class OrderService {
         BigDecimal subTotal = items.stream()
                 .map(OrderItem::getSubTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal taxAmount = taxService.calculateTax(subTotal);
+
+        BigDecimal discountAmount = request.getDiscountAmount() != null
+                ? request.getDiscountAmount().min(subTotal).max(BigDecimal.ZERO)
+                : BigDecimal.ZERO;
+        BigDecimal discountedSubTotal = subTotal.subtract(discountAmount);
+        BigDecimal taxAmount = taxService.calculateTax(discountedSubTotal);
 
         order.setSubTotalAmount(subTotal);
+        order.setDiscountAmount(discountAmount);
         order.setTaxAmount(taxAmount);
-        order.setTotalAmount(subTotal.add(taxAmount));
+        order.setTotalAmount(discountedSubTotal.add(taxAmount));
 
         Order savedOrder = orderRepository.save(order);
         recordTrackingEvent(savedOrder, savedOrder.getStatus(), buildTrackingNote(savedOrder.getStatus()));
@@ -220,10 +228,11 @@ public class OrderService {
     private void sendReceiptEmail(Order order) {
         if (order.getCustomer() == null || order.getCustomer().getEmail() == null) return;
         try {
-            BigDecimal sub   = order.getSubTotalAmount() != null ? order.getSubTotalAmount() : BigDecimal.ZERO;
-            BigDecimal tax   = order.getTaxAmount()      != null ? order.getTaxAmount()      : BigDecimal.ZERO;
-            BigDecimal total = order.getTotalAmount()    != null ? order.getTotalAmount()    : BigDecimal.ZERO;
-            BigDecimal rate  = order.getTaxRate()        != null ? order.getTaxRate().multiply(BigDecimal.valueOf(100)) : BigDecimal.valueOf(18);
+            BigDecimal sub      = order.getSubTotalAmount()  != null ? order.getSubTotalAmount()  : BigDecimal.ZERO;
+            BigDecimal discount = order.getDiscountAmount()  != null ? order.getDiscountAmount()  : BigDecimal.ZERO;
+            BigDecimal tax      = order.getTaxAmount()       != null ? order.getTaxAmount()       : BigDecimal.ZERO;
+            BigDecimal total    = order.getTotalAmount()     != null ? order.getTotalAmount()     : BigDecimal.ZERO;
+            BigDecimal rate     = order.getTaxRate()         != null ? order.getTaxRate().multiply(BigDecimal.valueOf(100)) : BigDecimal.valueOf(18);
 
             List<Map<String, Object>> itemList = order.getOrderItems().stream().map(i -> {
                 Map<String, Object> m = new HashMap<>();
@@ -245,6 +254,8 @@ public class OrderService {
             vars.put("orderNumber",     order.getOrderNumber());
             vars.put("items",           itemList);
             vars.put("subTotalAmount",  sub.longValue());
+            vars.put("discountAmount",  discount.longValue());
+            vars.put("couponCode",      order.getCouponCode());
             vars.put("taxAmount",       tax.longValue());
             vars.put("taxRate",         rate.intValue());
             vars.put("totalAmount",     total.longValue());

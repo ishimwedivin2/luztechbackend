@@ -38,6 +38,10 @@ public class Order extends BaseEntity {
 
     private BigDecimal subTotalAmount;
 
+    private BigDecimal discountAmount;
+
+    private String couponCode;
+
     private BigDecimal taxAmount;
 
     private BigDecimal taxRate;

@@ -1,5 +1,6 @@
 package com.luztechnology.inventory.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.luztechnology.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
@@ -16,12 +17,14 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class ProcurementOrder extends BaseEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "supplier_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Supplier supplier;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "inventory_item_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private InventoryItem inventoryItem;
 
     @Column(nullable = false)

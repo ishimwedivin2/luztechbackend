@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.UUID;
 
@@ -72,18 +73,31 @@ public class ReceiptService {
         table.addCell(headCell("Unit Price"));
         table.addCell(headCell("Subtotal"));
 
+        BigDecimal taxMultiplier = receipt.getTaxRate() != null
+                ? BigDecimal.ONE.add(receipt.getTaxRate())
+                : new BigDecimal("1.18");
         for (ReceiptItemResponse item : receipt.getItems()) {
+            BigDecimal unitInclTax = item.getUnitPrice().multiply(taxMultiplier).setScale(0, RoundingMode.HALF_UP);
+            BigDecimal subInclTax  = item.getSubTotal().multiply(taxMultiplier).setScale(0, RoundingMode.HALF_UP);
             table.addCell(new PdfPCell(new Phrase(item.getProductName(), bodyFont)));
             table.addCell(new PdfPCell(new Phrase(String.valueOf(item.getQuantity()), bodyFont)));
-            table.addCell(new PdfPCell(new Phrase(item.getUnitPrice().toString(), bodyFont)));
-            table.addCell(new PdfPCell(new Phrase(item.getSubTotal().toString(), bodyFont)));
+            table.addCell(new PdfPCell(new Phrase(unitInclTax.toString(), bodyFont)));
+            table.addCell(new PdfPCell(new Phrase(subInclTax.toString(), bodyFont)));
         }
 
         document.add(table);
         document.add(new Paragraph(" "));
-        addAmountLine(document, "Subtotal: ", receipt.getSubTotalAmount(), sectionFont);
-        addAmountLine(document, "Tax: ", receipt.getTaxAmount(), sectionFont);
-        addAmountLine(document, "Total: ", receipt.getTotalAmount(), headerFont);
+        if (receipt.getDiscountAmount() != null && receipt.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
+            String discountLabel = receipt.getCouponCode() != null
+                    ? "Discount (" + receipt.getCouponCode() + "): "
+                    : "Discount: ";
+            addAmountLine(document, discountLabel, receipt.getDiscountAmount().negate(), sectionFont);
+        }
+        addAmountLine(document, "Total Paid: ", receipt.getTotalAmount(), headerFont);
+        BigDecimal taxRatePct = receipt.getTaxRate() != null
+                ? receipt.getTaxRate().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP)
+                : BigDecimal.valueOf(18);
+        addAmountLine(document, "Includes VAT (" + taxRatePct.toPlainString() + "%): ", receipt.getTaxAmount(), bodyFont);
 
         document.close();
         return out.toByteArray();
@@ -104,6 +118,8 @@ public class ReceiptService {
                 .paymentMethod(order.getPaymentMethod())
                 .paymentReference(order.getPaymentReference())
                 .subTotalAmount(nullToZero(order.getSubTotalAmount()))
+                .discountAmount(nullToZero(order.getDiscountAmount()))
+                .couponCode(order.getCouponCode())
                 .taxRate(nullToZero(order.getTaxRate()))
                 .taxAmount(nullToZero(order.getTaxAmount()))
                 .totalAmount(order.getTotalAmount())

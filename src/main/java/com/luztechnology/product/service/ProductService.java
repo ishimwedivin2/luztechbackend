@@ -15,6 +15,7 @@ import com.luztechnology.product.repository.ProductImageRepository;
 import com.luztechnology.common.service.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.data.domain.Page;
@@ -247,6 +248,12 @@ public class ProductService {
     @Transactional
     public void deleteProduct(UUID id) {
         Product product = getProductById(id);
-        productRepository.delete(product);
+        try {
+            productRepository.delete(product);
+            productRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw new IllegalStateException(
+                "Cannot delete this product because it has already been added to a cart or purchased by a customer.");
+        }
     }
 }

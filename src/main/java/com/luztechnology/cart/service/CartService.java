@@ -78,8 +78,8 @@ public class CartService {
     @Transactional
     public CartResponse removeItem(User user, UUID productId) {
         Cart cart = getOrCreateCart(user);
-        cartItemRepository.findByCartAndProductId(cart, productId)
-                .ifPresent(cartItemRepository::delete);
+        cart.getItems().removeIf(item -> item.getProduct().getId().equals(productId));
+        cartRepository.save(cart);
         return toResponse(cartRepository.findById(cart.getId()).orElse(cart));
     }
 
@@ -118,10 +118,11 @@ public class CartService {
             try {
                 Coupon coupon = couponService.getCouponByCode(request.getCouponCode());
                 BigDecimal subtotal = itemDTOs.stream()
-                        .map(i -> i.getUnitPrice().multiply(java.math.BigDecimal.valueOf(i.getQuantity())))
+                        .map(i -> i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
                 BigDecimal discount = couponService.calculateDiscount(coupon, subtotal);
-                orderRequest.setTotalAmount(subtotal.subtract(discount).max(BigDecimal.ZERO));
+                orderRequest.setDiscountAmount(discount.min(subtotal));
+                orderRequest.setCouponCode(request.getCouponCode());
                 couponService.incrementUsage(request.getCouponCode());
             } catch (Exception e) {
                 throw new IllegalArgumentException("Invalid coupon: " + e.getMessage());

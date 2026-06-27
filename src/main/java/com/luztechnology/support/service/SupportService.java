@@ -1,6 +1,9 @@
 package com.luztechnology.support.service;
 
 import com.luztechnology.common.exception.ResourceNotFoundException;
+import com.luztechnology.notification.service.NotificationService;
+import com.luztechnology.support.dto.SupportMessageResponse;
+import com.luztechnology.support.dto.TicketDetailResponse;
 import com.luztechnology.support.entity.SatisfactionSurvey;
 import com.luztechnology.support.entity.SupportMessage;
 import com.luztechnology.support.entity.SupportTicket;
@@ -9,8 +12,8 @@ import com.luztechnology.support.repository.SupportMessageRepository;
 import com.luztechnology.support.repository.SupportTicketRepository;
 import com.luztechnology.user.entity.User;
 import com.luztechnology.user.repository.UserRepository;
-import com.luztechnology.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +29,7 @@ public class SupportService {
     private final SatisfactionSurveyRepository surveyRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Transactional
     public SupportTicket createTicket(User customer, String title, String description, String priority) {
@@ -36,27 +40,23 @@ public class SupportService {
                 .status("OPEN")
                 .priority(priority != null ? priority : "MEDIUM")
                 .build();
-
-        SupportTicket savedTicket = ticketRepository.save(ticket);
-
-        // Initial message
-        addMessage(savedTicket, customer, description);
-
-        return savedTicket;
+        // Fix 1: description is stored on the ticket itself — do NOT also create a duplicate initial message
+        return ticketRepository.save(ticket);
     }
 
     @Transactional
-    public SupportMessage addMessage(SupportTicket ticket, User sender, String content) {
+    public SupportMessageResponse addMessage(SupportTicket ticket, User sender, String content) {
         SupportMessage message = SupportMessage.builder()
                 .ticket(ticket)
                 .sender(sender)
                 .message(content)
                 .build();
 
-        SupportMessage savedMessage = messageRepository.save(message);
+        SupportMessageResponse response = toMessageResponse(messageRepository.save(message));
 
         // Notify customer if agent/admin replies
-        if (sender != null && ticket.getCustomer() != null && !sender.getId().equals(ticket.getCustomer().getId())) {
+        if (sender != null && ticket.getCustomer() != null
+                && !sender.getId().equals(ticket.getCustomer().getId())) {
             notificationService.createNotification(
                     ticket.getCustomer(),
                     "Support Update",
@@ -66,7 +66,10 @@ public class SupportService {
             );
         }
 
-        return savedMessage;
+        // Fix 11: broadcast new message in real-time so ticket-detail page updates live
+        messagingTemplate.convertAndSend("/topic/tickets/" + ticket.getId(), response);
+
+        return response;
     }
 
     @Transactional
@@ -88,7 +91,6 @@ public class SupportService {
         ticket.setStatus("IN_PROGRESS");
         SupportTicket saved = ticketRepository.save(ticket);
 
-        // Notify customer that an agent has been assigned
         notificationService.createNotification(
                 ticket.getCustomer(),
                 "Support Update",
@@ -104,7 +106,6 @@ public class SupportService {
     public SupportTicket updateStatus(UUID ticketId, String status) {
         SupportTicket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
-
         ticket.setStatus(status);
         return ticketRepository.save(ticket);
     }
@@ -116,6 +117,10 @@ public class SupportService {
 
         if (!"RESOLVED".equals(ticket.getStatus()) && !"CLOSED".equals(ticket.getStatus())) {
             throw new IllegalStateException("Cannot submit survey for an open ticket");
+        }
+
+        if (surveyRepository.existsByTicketId(ticketId)) {
+            throw new IllegalStateException("Survey already submitted for this ticket");
         }
 
         SatisfactionSurvey survey = SatisfactionSurvey.builder()
@@ -143,12 +148,47 @@ public class SupportService {
         return ticketRepository.findByAssignedAgentId(agentId);
     }
 
-    public List<SupportMessage> getTicketMessages(UUID ticketId) {
-        return messageRepository.findByTicketIdOrderByCreatedAtAsc(ticketId);
+    public List<SupportMessageResponse> getTicketMessages(UUID ticketId) {
+        return messageRepository.findByTicketIdOrderByCreatedAtAsc(ticketId).stream()
+                .map(this::toMessageResponse)
+                .toList();
     }
 
     public SupportTicket getTicketById(UUID ticketId) {
         return ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
+    }
+
+    public TicketDetailResponse getTicketDetail(UUID ticketId) {
+        SupportTicket t = getTicketById(ticketId);
+        boolean surveyed = surveyRepository.existsByTicketId(ticketId);
+        return TicketDetailResponse.builder()
+                .id(t.getId())
+                .title(t.getTitle())
+                .description(t.getDescription())
+                .status(t.getStatus())
+                .priority(t.getPriority())
+                .createdAt(t.getCreatedAt())
+                .updatedAt(t.getUpdatedAt())
+                .customerId(t.getCustomer().getId())
+                .customerFirstName(t.getCustomer().getFirstName())
+                .customerEmail(t.getCustomer().getEmail())
+                .agentId(t.getAssignedAgent() != null ? t.getAssignedAgent().getId() : null)
+                .agentFirstName(t.getAssignedAgent() != null ? t.getAssignedAgent().getFirstName() : null)
+                .agentEmail(t.getAssignedAgent() != null ? t.getAssignedAgent().getEmail() : null)
+                .surveyed(surveyed)
+                .build();
+    }
+
+    public SupportMessageResponse toMessageResponse(SupportMessage m) {
+        return SupportMessageResponse.builder()
+                .id(m.getId())
+                .ticketId(m.getTicket().getId())
+                .senderId(m.getSender().getId())
+                .senderFirstName(m.getSender().getFirstName())
+                .senderEmail(m.getSender().getEmail())
+                .message(m.getMessage())
+                .createdAt(m.getCreatedAt())
+                .build();
     }
 }

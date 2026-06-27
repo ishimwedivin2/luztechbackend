@@ -20,6 +20,8 @@ public class ReceiptResponse {
     private String paymentMethod;
     private String paymentReference;
     private BigDecimal subTotalAmount;
+    private BigDecimal discountAmount;
+    private String couponCode;
     private BigDecimal taxRate;
     private BigDecimal taxAmount;
     private BigDecimal totalAmount;

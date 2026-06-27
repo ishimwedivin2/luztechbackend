@@ -5,9 +5,10 @@ import com.luztechnology.common.exception.ResourceNotFoundException;
 import com.luztechnology.security.services.UserDetailsImpl;
 import com.luztechnology.support.dto.AssignTicketRequest;
 import com.luztechnology.support.dto.MessageRequest;
+import com.luztechnology.support.dto.SupportMessageResponse;
 import com.luztechnology.support.dto.SurveyRequest;
+import com.luztechnology.support.dto.TicketDetailResponse;
 import com.luztechnology.support.dto.TicketRequest;
-import com.luztechnology.support.entity.SupportMessage;
 import com.luztechnology.support.entity.SupportTicket;
 import com.luztechnology.support.service.SupportService;
 import com.luztechnology.user.entity.User;
@@ -36,7 +37,6 @@ public class SupportController {
     public ResponseEntity<ApiResponse<SupportTicket>> createTicket(
             @AuthenticationPrincipal UserDetailsImpl userDetails,
             @RequestBody TicketRequest request) {
-
         User user = getCurrentUser(userDetails);
         SupportTicket ticket = supportService.createTicket(user, request.getTitle(), request.getDescription(),
                 request.getPriority());
@@ -72,37 +72,44 @@ public class SupportController {
 
     @GetMapping("/tickets/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'CUSTOMER')")
-    public ResponseEntity<ApiResponse<SupportTicket>> getTicket(
+    public ResponseEntity<ApiResponse<TicketDetailResponse>> getTicket(
             @AuthenticationPrincipal UserDetailsImpl userDetails,
             @PathVariable UUID id) {
-        SupportTicket ticket = supportService.getTicketById(id);
-        User user = getCurrentUser(userDetails);
-        boolean isStaff = userDetails.getAuthorities().stream()
-                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
-                        || "ROLE_SUPPORT_AGENT".equals(a.getAuthority()));
-        if (!isStaff && !ticket.getCustomer().getId().equals(user.getId())) {
-            throw new AccessDeniedException("You do not have access to this ticket");
-        }
-        return ResponseEntity.ok(ApiResponse.success("Ticket retrieved", ticket));
+        TicketDetailResponse detail = supportService.getTicketDetail(id);
+        requireOwnerOrStaff(userDetails, detail.getCustomerId());
+        return ResponseEntity.ok(ApiResponse.success("Ticket retrieved", detail));
     }
 
     @GetMapping("/tickets/{id}/messages")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'CUSTOMER')")
-    public ResponseEntity<ApiResponse<List<SupportMessage>>> getTicketMessages(@PathVariable UUID id) {
-        List<SupportMessage> messages = supportService.getTicketMessages(id);
-        return ResponseEntity.ok(ApiResponse.success("Messages retrieved", messages));
+    public ResponseEntity<ApiResponse<List<SupportMessageResponse>>> getTicketMessages(
+            @AuthenticationPrincipal UserDetailsImpl userDetails,
+            @PathVariable UUID id) {
+        SupportTicket ticket = supportService.getTicketById(id);
+        requireOwnerOrStaff(userDetails, ticket.getCustomer().getId());
+        return ResponseEntity.ok(ApiResponse.success("Messages retrieved", supportService.getTicketMessages(id)));
     }
 
     @PostMapping("/tickets/{id}/messages")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'CUSTOMER')")
-    public ResponseEntity<ApiResponse<SupportMessage>> addMessage(
+    public ResponseEntity<ApiResponse<SupportMessageResponse>> addMessage(
             @AuthenticationPrincipal UserDetailsImpl userDetails,
             @PathVariable UUID id,
             @RequestBody MessageRequest request) {
+        SupportTicket ticket = supportService.getTicketById(id);
+        requireOwnerOrStaff(userDetails, ticket.getCustomer().getId());
 
-        SupportTicket ticket = supportService.updateStatus(id, "IN_PROGRESS");
+        if ("CLOSED".equals(ticket.getStatus())) {
+            throw new IllegalStateException("Cannot send messages to a closed ticket");
+        }
+
+        // Fix 9: only move to IN_PROGRESS from OPEN; never reopen a RESOLVED ticket
+        if ("OPEN".equals(ticket.getStatus())) {
+            ticket = supportService.updateStatus(id, "IN_PROGRESS");
+        }
+
         User user = getCurrentUser(userDetails);
-        SupportMessage message = supportService.addMessage(ticket, user, request.getMessage());
+        SupportMessageResponse message = supportService.addMessage(ticket, user, request.getMessage());
         return ResponseEntity.ok(ApiResponse.success("Message added", message));
     }
 
@@ -115,20 +122,47 @@ public class SupportController {
         return ResponseEntity.ok(ApiResponse.success("Ticket assigned", ticket));
     }
 
+    // Fix 5: separate resolve endpoint sets status to RESOLVED (not CLOSED)
+    @PatchMapping("/tickets/{id}/resolve")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT')")
+    public ResponseEntity<ApiResponse<SupportTicket>> resolveTicket(@PathVariable UUID id) {
+        SupportTicket ticket = supportService.updateStatus(id, "RESOLVED");
+        return ResponseEntity.ok(ApiResponse.success("Ticket resolved", ticket));
+    }
+
     @PatchMapping("/tickets/{id}/close")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'CUSTOMER')")
-    public ResponseEntity<ApiResponse<SupportTicket>> closeTicket(@PathVariable UUID id) {
-        SupportTicket ticket = supportService.updateStatus(id, "CLOSED");
-        return ResponseEntity.ok(ApiResponse.success("Ticket closed", ticket));
+    public ResponseEntity<ApiResponse<SupportTicket>> closeTicket(
+            @AuthenticationPrincipal UserDetailsImpl userDetails,
+            @PathVariable UUID id) {
+        // Fix 8: customer can only close their own ticket
+        SupportTicket ticket = supportService.getTicketById(id);
+        requireOwnerOrStaff(userDetails, ticket.getCustomer().getId());
+        SupportTicket closed = supportService.updateStatus(id, "CLOSED");
+        return ResponseEntity.ok(ApiResponse.success("Ticket closed", closed));
     }
 
     @PostMapping("/tickets/{id}/survey")
     @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<ApiResponse<Object>> submitSurvey(
+            @AuthenticationPrincipal UserDetailsImpl userDetails,
             @PathVariable UUID id,
             @RequestBody SurveyRequest request) {
+        SupportTicket ticket = supportService.getTicketById(id);
+        requireOwnerOrStaff(userDetails, ticket.getCustomer().getId());
         supportService.submitSurvey(id, request.getRating(), request.getFeedback());
         return ResponseEntity.ok(ApiResponse.success("Survey submitted", null));
+    }
+
+    // ── helpers ──────────────────────────────────────────────
+
+    private void requireOwnerOrStaff(UserDetailsImpl userDetails, UUID ownerId) {
+        boolean isStaff = userDetails.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority())
+                        || "ROLE_SUPPORT_AGENT".equals(a.getAuthority()));
+        if (!isStaff && !userDetails.getId().equals(ownerId)) {
+            throw new AccessDeniedException("You do not have access to this ticket");
+        }
     }
 
     private User getCurrentUser(UserDetailsImpl userDetails) {

@@ -1,5 +1,6 @@
 package com.luztechnology.payment.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.luztechnology.common.entity.BaseEntity;
 import com.luztechnology.order.entity.Order;
 import jakarta.persistence.Column;
@@ -26,8 +27,9 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class PaymentTransaction extends BaseEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "order_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "orderItems", "cashier"})
     private Order order;
 
     @Column(nullable = false)
