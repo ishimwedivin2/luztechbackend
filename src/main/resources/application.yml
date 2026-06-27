@@ -2,10 +2,13 @@ spring:
   application:
     name: "Luz Technology System"
 
+  config:
+    import: optional:file:./local.properties
+
   datasource:
-    url: ${env.DB_URL}
-    username: ${env.DB_USERNAME}
-    password: ${env.DB_PASSWORD}
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -20,8 +23,8 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: ${env.MAIL_USERNAME}
-    password: ${env.MAIL_PASSWORD}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
     properties:
       mail:
         smtp:
@@ -33,7 +36,7 @@ spring:
           writetimeout: 15000
 
 jwt:
-  secret: ${env.JWT_SECRET}
+  secret: ${JWT_SECRET}
   expirationMs: 86400000 # 24 hours
   refreshExpirationMs: 2592000000 # 30 days
 
@@ -42,7 +45,7 @@ app:
     sales-rate: 0.18
   password-reset:
     expiration-minutes: 30
-    url: ${env.PASSWORD_RESET_URL:http://localhost:5173}
+    url: ${PASSWORD_RESET_URL:http://localhost:5173}
   mfa:
     expiration-minutes: 10
 
@@ -55,17 +58,17 @@ springdoc:
 payment:
   mode: real
   stripe:
-    secret-key: ${env.STRIPE_SECRET_KEY}
-    webhook-secret: ${env.STRIPE_WEBHOOK_SECRET}
+    secret-key: ${STRIPE_SECRET_KEY}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET}
     currency: usd
   mtn:
-    collection-subscription-key: ${env.MTN_COLLECTION_SUBSCRIPTION_KEY}
-    disbursement-subscription-key: ${env.MTN_DISBURSEMENT_SUBSCRIPTION_KEY}
-    api-user: ${env.MTN_API_USER:}
-    api-key: ${env.MTN_API_KEY:}
-    target-environment: ${env.MTN_TARGET_ENVIRONMENT:sandbox}
-    base-url: ${env.MTN_BASE_URL:https://sandbox.momodeveloper.mtn.com}
-    callback-host: ${env.MTN_CALLBACK_HOST:localhost}
+    collection-subscription-key: ${MTN_COLLECTION_SUBSCRIPTION_KEY}
+    disbursement-subscription-key: ${MTN_DISBURSEMENT_SUBSCRIPTION_KEY}
+    api-user: ${MTN_API_USER:}
+    api-key: ${MTN_API_KEY:}
+    target-environment: ${MTN_TARGET_ENVIRONMENT:sandbox}
+    base-url: ${MTN_BASE_URL:https://sandbox.momodeveloper.mtn.com}
+    callback-host: ${MTN_CALLBACK_HOST:localhost}
 
 file:
   upload-dir: "uploads"
