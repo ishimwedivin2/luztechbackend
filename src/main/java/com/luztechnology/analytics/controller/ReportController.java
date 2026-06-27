@@ -22,38 +22,76 @@ public class ReportController {
 
     private final ReportService reportService;
 
+    private static final MediaType EXCEL =
+            MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+    // ── Sales Report ─────────────────────────────────────────
+
     @GetMapping("/sales")
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<byte[]> downloadSalesReport(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        
         try {
-            byte[] reportData = reportService.generateSalesReportExcel(startDate, endDate);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
-            headers.setContentDispositionFormData("attachment", "Sales_Report_" + startDate + "_to_" + endDate + ".xlsx");
-
-            return new ResponseEntity<>(reportData, headers, HttpStatus.OK);
-
+            byte[] data = reportService.generateSalesReportExcel(startDate, endDate);
+            return ResponseEntity.ok()
+                    .contentType(EXCEL)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"Sales_Report_" + startDate + "_to_" + endDate + ".xlsx\"")
+                    .body(data);
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
     }
 
+    // ── Inventory Report ─────────────────────────────────────
+
+    @GetMapping("/inventory")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<byte[]> downloadInventoryReport() {
+        try {
+            byte[] data = reportService.generateInventoryReportExcel();
+            String filename = "Inventory_Report_" + LocalDate.now() + ".xlsx";
+            return ResponseEntity.ok()
+                    .contentType(EXCEL)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                    .body(data);
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    // ── Orders Report ─────────────────────────────────────────
+
+    @GetMapping("/orders")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<byte[]> downloadOrdersReport(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        try {
+            byte[] data = reportService.generateOrdersReportExcel(startDate, endDate);
+            return ResponseEntity.ok()
+                    .contentType(EXCEL)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"Orders_Report_" + startDate + "_to_" + endDate + ".xlsx\"")
+                    .body(data);
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    // ── Invoice PDF ──────────────────────────────────────────
+
     @GetMapping("/invoices/{orderId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER')") // Ideally check if customer owns order
+    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER')")
     public ResponseEntity<byte[]> downloadInvoice(@PathVariable UUID orderId) {
         try {
             byte[] pdfData = reportService.generateInvoicePdf(orderId);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_PDF);
-            headers.setContentDispositionFormData("attachment", "Invoice_" + orderId + ".pdf");
-
-            return new ResponseEntity<>(pdfData, headers, HttpStatus.OK);
-
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"Invoice_" + orderId + ".pdf\"")
+                    .body(pdfData);
         } catch (DocumentException e) {
             return ResponseEntity.internalServerError().build();
         }

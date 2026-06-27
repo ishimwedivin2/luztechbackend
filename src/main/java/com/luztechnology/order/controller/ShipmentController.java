@@ -44,13 +44,13 @@ public class ShipmentController {
     }
 
     @GetMapping("/order/{orderId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<Shipment>> getShipmentByOrder(@PathVariable UUID orderId) {
         return ResponseEntity.ok(ApiResponse.success(shipmentService.getShipmentByOrderId(orderId)));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<Shipment>> getShipment(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(shipmentService.getShipmentById(id)));
     }

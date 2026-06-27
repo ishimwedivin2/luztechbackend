@@ -4,6 +4,7 @@ import com.luztechnology.common.entity.BaseEntity;
 import com.luztechnology.inventory.entity.InventoryItem;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
+import jakarta.persistence.Transient;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -62,4 +63,7 @@ public class Product extends BaseEntity {
     @Column(nullable = false)
     @Builder.Default
     private boolean featured = false;
+
+    @Transient
+    private Integer stock;
 }

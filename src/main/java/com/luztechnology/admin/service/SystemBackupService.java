@@ -5,6 +5,7 @@ import com.luztechnology.admin.repository.SystemBackupRepository;
 import com.luztechnology.common.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -60,7 +61,6 @@ public class SystemBackupService {
                 ? "backup-" + timestamp
                 : sanitizeName(requestedName);
         Path backupRoot = Paths.get(backupDir).toAbsolutePath().normalize();
-        Path stagingDir = backupRoot.resolve(backupName + "-staging");
         Path zipFile = backupRoot.resolve(backupName + ".zip");
 
         SystemBackup backup = systemBackupRepository.save(SystemBackup.builder()
@@ -70,6 +70,16 @@ public class SystemBackupService {
                 .message("Backup started")
                 .build());
 
+        runBackupAsync(backup.getId(), backupName, backupRoot, zipFile);
+        return backup;
+    }
+
+    @Async
+    @Transactional
+    public void runBackupAsync(java.util.UUID backupId, String backupName, Path backupRoot, Path zipFile) {
+        Path stagingDir = backupRoot.resolve(backupName + "-staging");
+        SystemBackup backup = systemBackupRepository.findById(backupId).orElse(null);
+        if (backup == null) return;
         try {
             Files.createDirectories(stagingDir);
             Files.createDirectories(backupRoot);
@@ -82,11 +92,11 @@ public class SystemBackupService {
             backup.setSizeBytes(Files.size(zipFile));
             backup.setCompletedAt(LocalDateTime.now());
             backup.setMessage("Database dump and uploaded files backed up successfully");
-            return systemBackupRepository.save(backup);
+            systemBackupRepository.save(backup);
         } catch (Exception ex) {
             backup.setStatus("FAILED");
             backup.setMessage(ex.getMessage());
-            return systemBackupRepository.save(backup);
+            systemBackupRepository.save(backup);
         } finally {
             deleteDirectoryQuietly(stagingDir);
         }
@@ -94,7 +104,7 @@ public class SystemBackupService {
 
     @Transactional(readOnly = true)
     public List<SystemBackup> getBackups() {
-        return systemBackupRepository.findAll();
+        return systemBackupRepository.findAllByOrderByCreatedAtDesc();
     }
 
     @Transactional(readOnly = true)

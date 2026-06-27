@@ -53,7 +53,7 @@ public class SupportController {
     }
 
     @GetMapping("/tickets")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<List<SupportTicket>>> getAllTickets(
             @RequestParam(required = false) String status) {
         List<SupportTicket> tickets = status == null
@@ -71,7 +71,7 @@ public class SupportController {
     }
 
     @GetMapping("/tickets/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'EMPLOYEE', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<TicketDetailResponse>> getTicket(
             @AuthenticationPrincipal UserDetailsImpl userDetails,
             @PathVariable UUID id) {
@@ -81,7 +81,7 @@ public class SupportController {
     }
 
     @GetMapping("/tickets/{id}/messages")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'EMPLOYEE', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<List<SupportMessageResponse>>> getTicketMessages(
             @AuthenticationPrincipal UserDetailsImpl userDetails,
             @PathVariable UUID id) {
@@ -91,7 +91,7 @@ public class SupportController {
     }
 
     @PostMapping("/tickets/{id}/messages")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'EMPLOYEE', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<SupportMessageResponse>> addMessage(
             @AuthenticationPrincipal UserDetailsImpl userDetails,
             @PathVariable UUID id,
@@ -114,7 +114,7 @@ public class SupportController {
     }
 
     @PatchMapping("/tickets/{id}/assign")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<SupportTicket>> assignTicket(
             @PathVariable UUID id,
             @Valid @RequestBody AssignTicketRequest request) {

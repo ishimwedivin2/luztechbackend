@@ -69,6 +69,50 @@ public class OrderService {
         return orderRepository.findByCustomerId(customerId);
     }
 
+    @Transactional(readOnly = true)
+    public List<com.luztechnology.order.dto.CustomerOrderResponse> getCustomerOrderDtos(UUID customerId) {
+        return orderRepository.findByCustomerId(customerId).stream()
+                .map(this::toCustomerOrderResponse)
+                .collect(Collectors.toList());
+    }
+
+    private com.luztechnology.order.dto.CustomerOrderResponse toCustomerOrderResponse(Order o) {
+        List<com.luztechnology.order.dto.OrderItemResponse> items = o.getOrderItems().stream().map(item -> {
+            Product p = item.getProduct();
+            String imageUrl = "";
+            if (p != null && p.getImages() != null) {
+                imageUrl = p.getImages().stream()
+                        .filter(img -> img.isPrimary())
+                        .findFirst()
+                        .map(img -> img.getUrl())
+                        .orElse(p.getImages().isEmpty() ? "" : p.getImages().get(0).getUrl());
+            }
+            return com.luztechnology.order.dto.OrderItemResponse.builder()
+                    .productId(p != null ? p.getId() : null)
+                    .productName(p != null ? p.getName() : "—")
+                    .imageUrl(imageUrl)
+                    .quantity(item.getQuantity())
+                    .unitPrice(item.getUnitPrice())
+                    .subTotal(item.getSubTotal())
+                    .build();
+        }).collect(Collectors.toList());
+
+        return com.luztechnology.order.dto.CustomerOrderResponse.builder()
+                .id(o.getId())
+                .orderNumber(o.getOrderNumber())
+                .status(o.getStatus().name())
+                .subTotalAmount(o.getSubTotalAmount())
+                .taxAmount(o.getTaxAmount())
+                .taxRate(o.getTaxRate())
+                .totalAmount(o.getTotalAmount())
+                .paymentMethod(o.getPaymentMethod())
+                .paymentReference(o.getPaymentReference())
+                .shippingAddress(o.getShippingAddress())
+                .createdAt(o.getCreatedAt())
+                .orderItems(items)
+                .build();
+    }
+
     @Transactional
     public Order processOrder(OrderRequestDTO request) {
         UserDetailsImpl userDetails = (UserDetailsImpl) SecurityContextHolder.getContext().getAuthentication()
@@ -157,16 +201,31 @@ public class OrderService {
     }
 
     private void reduceInventoryIfLinked(Product product, Integer quantity, String orderNumber) {
-        if (product.getInventoryItem() == null) {
-            return;
-        }
-
+        if (product.getInventoryItem() == null) return;
         inventoryService.adjustStock(
                 product.getInventoryItem().getId(),
                 -quantity,
                 "Sale completed",
                 "SALE",
                 orderNumber);
+    }
+
+    private void restoreInventoryForOrder(Order order) {
+        if (order.getOrderItems() == null) return;
+        for (OrderItem item : order.getOrderItems()) {
+            Product product = item.getProduct();
+            if (product == null || product.getInventoryItem() == null) continue;
+            try {
+                inventoryService.adjustStock(
+                        product.getInventoryItem().getId(),
+                        item.getQuantity(),
+                        "Order " + order.getOrderNumber() + " cancelled/returned — stock restored",
+                        "RETURN",
+                        order.getOrderNumber());
+            } catch (Exception e) {
+                // Log but don't fail the cancellation if restore encounters an issue
+            }
+        }
     }
 
     @Transactional
@@ -203,6 +262,18 @@ public class OrderService {
         if (newStatus == OrderStatus.PAID) {
             taxService.recordTaxForPaidOrder(savedOrder);
             sendReceiptEmail(savedOrder);
+        }
+
+        // Restore stock when admin manually moves an order to a terminal cancelled/returned state
+        // Only restore once — guard against double-restore if already in one of these states
+        boolean wasAlreadyTerminal = oldStatus == OrderStatus.CANCELLED
+                || oldStatus == OrderStatus.RETURNED
+                || oldStatus == OrderStatus.REFUNDED;
+        boolean isNowTerminal = newStatus == OrderStatus.CANCELLED
+                || newStatus == OrderStatus.RETURNED
+                || newStatus == OrderStatus.REFUNDED;
+        if (isNowTerminal && !wasAlreadyTerminal) {
+            restoreInventoryForOrder(savedOrder);
         }
 
         // Auto-create a ReturnRequest when an order is directly set to REFUNDED
@@ -290,9 +361,14 @@ public class OrderService {
         if (order.getStatus() == OrderStatus.SHIPPED || order.getStatus() == OrderStatus.DELIVERED) {
             throw new IllegalStateException("Cannot cancel an order that has already been shipped or delivered.");
         }
+        OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.CANCELLED);
         Order savedOrder = orderRepository.save(order);
         recordTrackingEvent(savedOrder, OrderStatus.CANCELLED, buildTrackingNote(OrderStatus.CANCELLED));
+        // Restore stock only if it was previously reduced (i.e. order was not already cancelled/refunded)
+        if (previousStatus != OrderStatus.CANCELLED && previousStatus != OrderStatus.REFUNDED) {
+            restoreInventoryForOrder(savedOrder);
+        }
         return savedOrder;
     }
 

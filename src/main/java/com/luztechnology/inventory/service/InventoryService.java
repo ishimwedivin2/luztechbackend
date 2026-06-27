@@ -38,25 +38,40 @@ public class InventoryService {
     @Transactional
     public void syncFromProducts() {
         int synced = 0;
+        int linked = 0;
         for (Product p : productRepository.findAll()) {
             if (p.getSku() == null) continue;
-            if (inventoryItemRepository.findBySku(p.getSku()).isPresent()) continue;
-            try {
-                inventoryItemRepository.save(InventoryItem.builder()
-                        .sku(p.getSku())
-                        .productName(p.getName())
-                        .quantity(0)
-                        .lowStockThreshold(HARD_LOW_STOCK_MIN)
-                        .location("Main Warehouse")
-                        .build());
-                synced++;
-            } catch (DataIntegrityViolationException ignored) {
-                // another thread already inserted this SKU — safe to skip
+
+            InventoryItem item;
+            java.util.Optional<InventoryItem> existing = inventoryItemRepository.findBySku(p.getSku());
+            if (existing.isPresent()) {
+                item = existing.get();
+            } else {
+                try {
+                    item = inventoryItemRepository.save(InventoryItem.builder()
+                            .sku(p.getSku())
+                            .productName(p.getName())
+                            .quantity(0)
+                            .lowStockThreshold(HARD_LOW_STOCK_MIN)
+                            .location("Main Warehouse")
+                            .build());
+                    synced++;
+                } catch (DataIntegrityViolationException ignored) {
+                    // another thread already inserted this SKU
+                    item = inventoryItemRepository.findBySku(p.getSku()).orElse(null);
+                    if (item == null) continue;
+                }
+            }
+
+            // Link the inventory item back to the product if not already linked
+            if (p.getInventoryItem() == null || !p.getInventoryItem().getId().equals(item.getId())) {
+                p.setInventoryItem(item);
+                productRepository.save(p);
+                linked++;
             }
         }
-        if (synced > 0) {
-            logger.info("Auto-synced {} inventory items from products", synced);
-        }
+        if (synced > 0) logger.info("Auto-synced {} new inventory items from products", synced);
+        if (linked > 0) logger.info("Linked {} products to their inventory items", linked);
     }
 
     @Transactional(readOnly = true)

@@ -74,14 +74,24 @@ public class ProductService {
 
     private void ensureInventoryItem(Product product) {
         if (product.getSku() == null) return;
-        if (inventoryItemRepository.findBySku(product.getSku()).isPresent()) return;
-        inventoryItemRepository.save(InventoryItem.builder()
-                .sku(product.getSku())
-                .productName(product.getName())
-                .quantity(0)
-                .lowStockThreshold(5)
-                .location("Main Warehouse")
-                .build());
+        InventoryItem item = inventoryItemRepository.findBySku(product.getSku())
+                .orElseGet(() -> {
+                    try {
+                        return inventoryItemRepository.save(InventoryItem.builder()
+                                .sku(product.getSku())
+                                .productName(product.getName())
+                                .quantity(0)
+                                .lowStockThreshold(5)
+                                .location("Main Warehouse")
+                                .build());
+                    } catch (DataIntegrityViolationException e) {
+                        return inventoryItemRepository.findBySku(product.getSku()).orElseThrow();
+                    }
+                });
+        if (product.getInventoryItem() == null || !product.getInventoryItem().getId().equals(item.getId())) {
+            product.setInventoryItem(item);
+            productRepository.save(product);
+        }
     }
 
     private com.luztechnology.product.dto.ProductImageResponse toImageDto(ProductImage image) {
@@ -207,7 +217,21 @@ public class ProductService {
         product.setPrice(details.getPrice());
         product.setSku(details.getSku());
         product.setStatus(details.getStatus());
-        return productRepository.save(product);
+        product.setFeatured(details.isFeatured());
+        if (details.getCategory() != null && details.getCategory().getId() != null) {
+            categoryRepository.findById(details.getCategory().getId())
+                    .ifPresent(product::setCategory);
+        }
+        Product saved = productRepository.save(product);
+        // Update inventory quantity if a stock value was provided
+        if (details.getStock() != null && saved.getInventoryItem() != null) {
+            InventoryItem inv = inventoryItemRepository.findById(saved.getInventoryItem().getId()).orElse(null);
+            if (inv != null) {
+                inv.setQuantity(details.getStock());
+                inventoryItemRepository.save(inv);
+            }
+        }
+        return saved;
     }
 
     @Transactional

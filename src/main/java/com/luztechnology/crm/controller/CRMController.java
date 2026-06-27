@@ -19,38 +19,43 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/crm")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
 public class CRMController {
 
     private final CRMService crmService;
     private final UserRepository userRepository;
 
     @GetMapping("/customers")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT')")
     public ResponseEntity<ApiResponse<List<User>>> getAllCustomers() {
         return ResponseEntity.ok(ApiResponse.success(userRepository.findByRoles_Name("ROLE_CUSTOMER")));
     }
 
     @GetMapping("/customers/{id}/summary")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getCustomerSummary(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(crmService.getCustomerSummary(id)));
     }
 
     @GetMapping("/analytics")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getCrmAnalytics() {
         return ResponseEntity.ok(ApiResponse.success("CRM analytics retrieved", crmService.getCrmAnalytics()));
     }
 
     @GetMapping("/customers/{id}/analytics")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getCustomerAnalytics(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success("Customer analytics retrieved", crmService.getCustomerAnalytics(id)));
     }
 
     @GetMapping("/customers/{id}/communications")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT')")
     public ResponseEntity<ApiResponse<List<CommunicationLog>>> getCommunicationLogs(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success("Communication logs retrieved", crmService.getCommunicationLogs(id)));
     }
 
     @PostMapping("/communications")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT')")
     public ResponseEntity<ApiResponse<CommunicationLog>> createCommunicationLog(
             @Valid @RequestBody CommunicationLogRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Communication log created",

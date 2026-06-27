@@ -1,6 +1,7 @@
 package com.luztechnology.order.controller;
 
 import com.luztechnology.common.dto.ApiResponse;
+import com.luztechnology.order.dto.CustomerOrderResponse;
 import com.luztechnology.order.dto.OrderTrackingResponse;
 import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.entity.OrderStatus;
@@ -21,27 +22,27 @@ public class OrderController {
     private final OrderService orderService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT')")
     public ResponseEntity<ApiResponse<List<Order>>> getAllOrders() {
         return ResponseEntity.ok(ApiResponse.success(orderService.getAllOrders()));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<Order>> getOrderById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(orderService.getOrderById(id)));
     }
 
     @GetMapping("/{id}/tracking")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<OrderTrackingResponse>> getOrderTracking(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success("Order tracking retrieved", orderService.getOrderTracking(id)));
     }
 
     @GetMapping("/customer/{customerId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
-    public ResponseEntity<ApiResponse<List<Order>>> getOrdersByCustomer(@PathVariable UUID customerId) {
-        return ResponseEntity.ok(ApiResponse.success(orderService.getOrdersByCustomer(customerId)));
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT', 'CUSTOMER')")
+    public ResponseEntity<ApiResponse<List<CustomerOrderResponse>>> getOrdersByCustomer(@PathVariable UUID customerId) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.getCustomerOrderDtos(customerId)));
     }
 
     @PostMapping

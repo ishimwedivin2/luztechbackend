@@ -62,7 +62,7 @@ public class LiveChatController {
     }
 
     @PostMapping("/sessions/{sessionId}/assign")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<ChatSession>> assignSession(
             @PathVariable UUID sessionId,
             @Valid @RequestBody AssignChatRequest request) {
@@ -89,7 +89,7 @@ public class LiveChatController {
     }
 
     @PostMapping("/sessions/{sessionId}/close")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORT_AGENT', 'EMPLOYEE', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<ChatSession>> closeSession(
             @AuthenticationPrincipal UserDetailsImpl userDetails,
             @PathVariable UUID sessionId) {

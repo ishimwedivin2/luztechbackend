@@ -36,26 +36,26 @@ public class ReturnController {
     private final UserRepository userRepository;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT')")
     public ResponseEntity<ApiResponse<List<ReturnRequest>>> getReturns(
             @RequestParam(required = false) String status) {
         return ResponseEntity.ok(ApiResponse.success(returnService.getReturns(status)));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<ReturnRequest>> getReturn(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(returnService.getReturnById(id)));
     }
 
     @GetMapping("/order/{orderId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<ReturnRequest>> getReturnByOrder(@PathVariable UUID orderId) {
         return ResponseEntity.ok(ApiResponse.success(returnService.getReturnByOrderId(orderId)));
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT', 'CUSTOMER')")
     public ResponseEntity<ApiResponse<ReturnRequest>> createReturn(
             @AuthenticationPrincipal UserDetailsImpl userDetails,
             @Valid @RequestBody CreateReturnRequest request) {
