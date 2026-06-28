@@ -72,17 +72,17 @@
           <tr>
             <th>Product</th>
             <th>Qty</th>
-            <th>Total</th>
+            <th>Total (tax incl.)</th>
           </tr>
         </thead>
         <tbody>
           <tr th:each="item : ${items}">
             <td>
               <div class="prod-name" th:text="${item.productName}">Product</div>
-              <div class="prod-meta" th:text="'RWF ' + ${#numbers.formatInteger(item.unitPrice, 0, 'COMMA')} + ' each'"></div>
+              <div class="prod-meta" th:text="'RWF ' + ${#numbers.formatInteger(item.unitWithTax, 0, 'COMMA')} + ' each'"></div>
             </td>
             <td th:text="${item.quantity}">1</td>
-            <td th:text="'RWF ' + ${#numbers.formatInteger(item.subTotal, 0, 'COMMA')}">RWF 0</td>
+            <td th:text="'RWF ' + ${#numbers.formatInteger(item.itemTotal, 0, 'COMMA')}">RWF 0</td>
           </tr>
         </tbody>
       </table>
@@ -90,25 +90,21 @@
 
     <!-- Totals -->
     <div class="totals">
-      <div class="tot-row" th:if="${subTotalAmount != null and (discountAmount != null and discountAmount > 0)}">
+      <div class="tot-row" th:if="${subTotalAmount != null}">
         <span>Subtotal</span>
-        <span th:text="'RWF ' + ${#numbers.formatInteger(subTotalAmount, 0, 'COMMA')}">RWF 0</span>
+        <span th:text="'RWF ' + ${#numbers.formatInteger(subTotalAmount + taxAmount, 0, 'COMMA')}">RWF 0</span>
       </div>
       <div class="tot-row" th:if="${discountAmount != null and discountAmount > 0}" style="color:#10b981;">
         <span th:text="${couponCode != null} ? 'Discount (' + ${couponCode} + ')' : 'Discount'">Discount</span>
         <span th:text="'-RWF ' + ${#numbers.formatInteger(discountAmount, 0, 'COMMA')}">-RWF 0</span>
       </div>
-      <div class="tot-row" th:if="${subTotalAmount != null}">
-        <span>Subtotal</span>
-        <span th:text="'RWF ' + ${#numbers.formatInteger(subTotalAmount, 0, 'COMMA')}">RWF 0</span>
-      </div>
-      <div class="tot-row" th:if="${taxAmount != null}">
-        <span th:text="'Tax (' + ${taxRate} + '%)'">Tax (18%)</span>
-        <span th:text="'RWF ' + ${#numbers.formatInteger(taxAmount, 0, 'COMMA')}">RWF 0</span>
-      </div>
       <div class="tot-row grand">
         <span>Total Paid</span>
         <span th:text="'RWF ' + ${#numbers.formatInteger(totalAmount, 0, 'COMMA')}">RWF 0</span>
+      </div>
+      <div class="tot-row" th:if="${taxAmount != null}">
+        <span th:text="'Tax (' + ${taxRate} + '%) included'">Tax (18%) included</span>
+        <span th:text="'RWF ' + ${#numbers.formatInteger(taxAmount, 0, 'COMMA')}">RWF 0</span>
       </div>
     </div>
 

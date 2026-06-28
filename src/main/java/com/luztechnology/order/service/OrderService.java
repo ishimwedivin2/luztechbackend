@@ -24,6 +24,8 @@ import com.luztechnology.user.repository.UserRepository;
 import com.luztechnology.security.services.UserDetailsImpl;
 import com.luztechnology.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +42,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class OrderService {
+
+    private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
@@ -297,7 +301,12 @@ public class OrderService {
     }
 
     private void sendReceiptEmail(Order order) {
-        if (order.getCustomer() == null || order.getCustomer().getEmail() == null) return;
+        order = orderRepository.findByIdWithItemsAndCustomer(order.getId()).orElse(order);
+        if (order.getCustomer() == null || order.getCustomer().getEmail() == null) {
+            logger.warn("sendReceiptEmail skipped for order {} — customer or email is null", order.getOrderNumber());
+            return;
+        }
+        logger.info("sendReceiptEmail starting for order {} to {}", order.getOrderNumber(), order.getCustomer().getEmail());
         try {
             BigDecimal sub      = order.getSubTotalAmount()  != null ? order.getSubTotalAmount()  : BigDecimal.ZERO;
             BigDecimal discount = order.getDiscountAmount()  != null ? order.getDiscountAmount()  : BigDecimal.ZERO;
@@ -305,12 +314,22 @@ public class OrderService {
             BigDecimal total    = order.getTotalAmount()     != null ? order.getTotalAmount()     : BigDecimal.ZERO;
             BigDecimal rate     = order.getTaxRate()         != null ? order.getTaxRate().multiply(BigDecimal.valueOf(100)) : BigDecimal.valueOf(18);
 
+            BigDecimal taxRate = order.getTaxRate() != null ? order.getTaxRate() : BigDecimal.valueOf(0.18);
             List<Map<String, Object>> itemList = order.getOrderItems().stream().map(i -> {
                 Map<String, Object> m = new HashMap<>();
                 m.put("productName", i.getProduct() != null ? i.getProduct().getName() : "Product");
                 m.put("quantity",    i.getQuantity());
                 m.put("unitPrice",   i.getUnitPrice() != null ? i.getUnitPrice().longValue() : 0L);
-                m.put("subTotal",    i.getUnitPrice() != null ? i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity())).longValue() : 0L);
+                BigDecimal lineTotal = i.getUnitPrice() != null
+                        ? i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity()))
+                        : BigDecimal.ZERO;
+                BigDecimal itemTotal = lineTotal.multiply(BigDecimal.ONE.add(taxRate)).setScale(0, java.math.RoundingMode.HALF_UP);
+                BigDecimal unitWithTax = i.getUnitPrice() != null
+                        ? i.getUnitPrice().multiply(BigDecimal.ONE.add(taxRate)).setScale(0, java.math.RoundingMode.HALF_UP)
+                        : BigDecimal.ZERO;
+                m.put("subTotal",    lineTotal.longValue());
+                m.put("itemTotal",   itemTotal.longValue());
+                m.put("unitWithTax", unitWithTax.longValue());
                 return m;
             }).collect(Collectors.toList());
 
@@ -343,7 +362,7 @@ public class OrderService {
                     vars
             );
         } catch (Exception e) {
-            // Do not fail the transaction if email fails
+            logger.error("sendReceiptEmail failed for order {}: {}", order.getOrderNumber(), e.getMessage(), e);
         }
     }
 

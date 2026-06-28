@@ -43,9 +43,11 @@ public class MailService {
             logger.info("Email sent successfully to: {}", to);
 
         } catch (MessagingException e) {
-            logger.error("Failed to send email to {}", to, e);
+            logger.error("Failed to send email to {}: {}", to, e.getMessage(), e);
         } catch (java.io.UnsupportedEncodingException e) {
-            logger.error("Failed to set sender name for email to {}", to, e);
+            logger.error("Failed to set sender name for email to {}: {}", to, e.getMessage(), e);
+        } catch (Exception e) {
+            logger.error("Unexpected error sending email to {}: {}", to, e.getMessage(), e);
         }
     }
 }
