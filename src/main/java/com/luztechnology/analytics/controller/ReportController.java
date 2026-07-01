@@ -96,4 +96,19 @@ public class ReportController {
             return ResponseEntity.internalServerError().build();
         }
     }
+
+    @GetMapping("/delivery-notes/{orderId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    public ResponseEntity<byte[]> downloadDeliveryNote(@PathVariable UUID orderId) {
+        try {
+            byte[] pdfData = reportService.generateDeliveryNotePdf(orderId);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"Delivery_Note_" + orderId + ".pdf\"")
+                    .body(pdfData);
+        } catch (DocumentException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
 }

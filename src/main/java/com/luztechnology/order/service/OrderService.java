@@ -20,6 +20,8 @@ import com.luztechnology.order.repository.ShipmentRepository;
 import com.luztechnology.product.entity.Product;
 import com.luztechnology.product.entity.ProductStatus;
 import com.luztechnology.product.repository.ProductRepository;
+import com.luztechnology.user.entity.CustomerAddress;
+import com.luztechnology.user.repository.CustomerAddressRepository;
 import com.luztechnology.user.repository.UserRepository;
 import com.luztechnology.security.services.UserDetailsImpl;
 import com.luztechnology.user.entity.User;
@@ -56,6 +58,7 @@ public class OrderService {
     private final OrderTrackingEventRepository trackingEventRepository;
     private final ShipmentRepository shipmentRepository;
     private final ReturnRequestRepository returnRequestRepository;
+    private final CustomerAddressRepository customerAddressRepository;
 
     @Transactional(readOnly = true)
     public List<Order> getAllOrders() {
@@ -112,6 +115,13 @@ public class OrderService {
                 .paymentMethod(o.getPaymentMethod())
                 .paymentReference(o.getPaymentReference())
                 .shippingAddress(o.getShippingAddress())
+                .shippingProvince(o.getShippingProvince())
+                .shippingDistrict(o.getShippingDistrict())
+                .shippingSector(o.getShippingSector())
+                .shippingCell(o.getShippingCell())
+                .shippingVillage(o.getShippingVillage())
+                .deliveryInstructions(o.getDeliveryInstructions())
+                .deliveryPhoneNumber(o.getDeliveryPhoneNumber())
                 .createdAt(o.getCreatedAt())
                 .orderItems(items)
                 .build();
@@ -144,6 +154,10 @@ public class OrderService {
             String orderChannel,
             String paymentReference) {
 
+        CustomerAddress addressRef = request.getShippingAddressId() != null
+                ? customerAddressRepository.findById(request.getShippingAddressId()).orElse(null)
+                : null;
+
         Order order = Order.builder()
                 .orderNumber("LUZ-" + System.currentTimeMillis())
                 .customer(customer)
@@ -156,6 +170,14 @@ public class OrderService {
                 .taxRate(taxService.getTaxRate())
                 .totalAmount(BigDecimal.ZERO)
                 .shippingAddress(request.getShippingAddress())
+                .shippingAddressRef(addressRef)
+                .shippingProvince(request.getShippingProvince())
+                .shippingDistrict(request.getShippingDistrict())
+                .shippingSector(request.getShippingSector())
+                .shippingCell(request.getShippingCell())
+                .shippingVillage(request.getShippingVillage())
+                .deliveryInstructions(request.getDeliveryInstructions())
+                .deliveryPhoneNumber(request.getDeliveryPhoneNumber())
                 .billingAddress(request.getBillingAddress())
                 .paymentMethod(request.getPaymentMethod())
                 .paymentReference(paymentReference)

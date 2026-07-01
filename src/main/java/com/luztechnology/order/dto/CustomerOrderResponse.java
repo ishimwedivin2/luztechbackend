@@ -21,6 +21,13 @@ public class CustomerOrderResponse {
     private String paymentMethod;
     private String paymentReference;
     private String shippingAddress;
+    private String shippingProvince;
+    private String shippingDistrict;
+    private String shippingSector;
+    private String shippingCell;
+    private String shippingVillage;
+    private String deliveryInstructions;
+    private String deliveryPhoneNumber;
     private LocalDateTime createdAt;
     private List<OrderItemResponse> orderItems;
 }

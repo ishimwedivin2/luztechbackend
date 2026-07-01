@@ -16,4 +16,11 @@ public class OrderSummaryResponse {
     private BigDecimal taxRate;
     private String paymentMethod;
     private String shippingAddress;
+    private String shippingProvince;
+    private String shippingDistrict;
+    private String shippingSector;
+    private String shippingCell;
+    private String shippingVillage;
+    private String deliveryInstructions;
+    private String deliveryPhoneNumber;
 }

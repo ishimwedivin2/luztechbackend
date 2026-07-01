@@ -14,10 +14,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
   mail:
@@ -77,3 +77,18 @@ system:
   backup-dir: "backups"
   pg-dump-command: "C:/Program Files/PostgreSQL/17/bin/pg_dump"
   psql-command: "C:/Program Files/PostgreSQL/17/bin/psql"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+info:
+  app:
+    name: "Luz Technology System"
+    version: "1.0.0"
+    description: "Integrated Management Information and E-Commerce System"

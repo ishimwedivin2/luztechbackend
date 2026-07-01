@@ -2,6 +2,7 @@ package com.luztechnology.order.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.luztechnology.common.entity.BaseEntity;
+import com.luztechnology.user.entity.CustomerAddress;
 import com.luztechnology.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
@@ -51,6 +52,22 @@ public class Order extends BaseEntity {
 
     @Column(nullable = false)
     private String shippingAddress;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shipping_address_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "customer"})
+    private CustomerAddress shippingAddressRef;
+
+    private String shippingProvince;
+    private String shippingDistrict;
+    private String shippingSector;
+    private String shippingCell;
+    private String shippingVillage;
+
+    @Column(length = 1000)
+    private String deliveryInstructions;
+
+    private String deliveryPhoneNumber;
 
     private String billingAddress;
     private String paymentReference;

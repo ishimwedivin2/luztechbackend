@@ -4,6 +4,7 @@ import com.lowagie.text.Document;
 import com.lowagie.text.DocumentException;
 import com.lowagie.text.Element;
 import com.lowagie.text.FontFactory;
+import com.lowagie.text.Image;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.pdf.PdfPCell;
@@ -16,6 +17,7 @@ import com.luztechnology.order.entity.OrderItem;
 import com.luztechnology.order.entity.OrderStatus;
 import com.luztechnology.order.repository.OrderRepository;
 import com.luztechnology.order.service.OrderService;
+import com.luztechnology.product.entity.Product;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
@@ -32,6 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -295,6 +300,78 @@ public class ReportService {
         return out.toByteArray();
     }
 
+    @Transactional(readOnly = true)
+    public byte[] generateDeliveryNotePdf(UUID orderId) throws DocumentException {
+        Order order = orderService.getOrderById(orderId);
+
+        Document document = new Document();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PdfWriter.getInstance(document, out);
+        document.open();
+
+        com.lowagie.text.Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18);
+        com.lowagie.text.Font sectionFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
+        com.lowagie.text.Font bodyFont = FontFactory.getFont(FontFactory.HELVETICA, 10);
+        com.lowagie.text.Font smallFont = FontFactory.getFont(FontFactory.HELVETICA, 9);
+
+        addDeliveryNoteHeader(document, order, titleFont, bodyFont, smallFont);
+        document.add(new Paragraph(" "));
+
+        String customerName = order.getCustomer() == null
+                ? "Walk-in customer"
+                : order.getCustomer().getFirstName() + " " + order.getCustomer().getLastName();
+        String customerEmail = order.getCustomer() != null ? order.getCustomer().getEmail() : "-";
+        String customerPhone = firstNonBlank(order.getDeliveryPhoneNumber(),
+                order.getCustomer() != null ? order.getCustomer().getPhoneNumber() : null,
+                "-");
+
+        document.add(new Paragraph("Order", sectionFont));
+        document.add(new Paragraph("Order Number: " + safe(order.getOrderNumber()), bodyFont));
+        document.add(new Paragraph("Order Date: " + (order.getCreatedAt() != null ? order.getCreatedAt().toLocalDate() : "-"), bodyFont));
+        document.add(new Paragraph("Status: " + (order.getStatus() != null ? order.getStatus().name() : "-"), bodyFont));
+        document.add(new Paragraph(" "));
+
+        document.add(new Paragraph("Customer", sectionFont));
+        document.add(new Paragraph("Name: " + customerName, bodyFont));
+        document.add(new Paragraph("Phone: " + customerPhone, bodyFont));
+        document.add(new Paragraph("Email: " + customerEmail, bodyFont));
+        document.add(new Paragraph(" "));
+
+        document.add(new Paragraph("Delivery Address", sectionFont));
+        document.add(new Paragraph("Full Delivery Address: " + deliveryAddress(order), sectionFont));
+        document.add(new Paragraph("Province: " + valueOrDash(order.getShippingProvince()), bodyFont));
+        document.add(new Paragraph("District: " + valueOrDash(order.getShippingDistrict()), bodyFont));
+        document.add(new Paragraph("Sector: " + valueOrDash(order.getShippingSector()), bodyFont));
+        document.add(new Paragraph("Cell: " + valueOrDash(order.getShippingCell()), bodyFont));
+        document.add(new Paragraph("Village: " + valueOrDash(order.getShippingVillage()), bodyFont));
+        document.add(new Paragraph("Landmark / Instructions: " + safe(order.getDeliveryInstructions()), bodyFont));
+        document.add(new Paragraph(" "));
+
+        PdfPTable table = new PdfPTable(4);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{4f, 2f, 1f, 2f});
+        table.addCell(getHeadCell("Product"));
+        table.addCell(getHeadCell("SKU"));
+        table.addCell(getHeadCell("Qty"));
+        table.addCell(getHeadCell("Checked"));
+
+        for (OrderItem item : order.getOrderItems()) {
+            Product product = item.getProduct();
+            table.addCell(new PdfPCell(new Phrase(product != null ? product.getName() : "Item", bodyFont)));
+            table.addCell(new PdfPCell(new Phrase(product != null ? safe(product.getSku()) : "-", bodyFont)));
+            table.addCell(new PdfPCell(new Phrase(String.valueOf(item.getQuantity()), bodyFont)));
+            table.addCell(new PdfPCell(new Phrase(" ", bodyFont)));
+        }
+        document.add(table);
+        document.add(new Paragraph(" "));
+        document.add(new Paragraph("Prepared by: ____________________", bodyFont));
+        document.add(new Paragraph("Delivered by: ____________________", bodyFont));
+        document.add(new Paragraph("Customer signature: _______________", bodyFont));
+
+        document.close();
+        return out.toByteArray();
+    }
+
     // ── Helpers ──────────────────────────────────────────────
 
     private CellStyle boldStyle(Workbook wb) {
@@ -332,5 +409,110 @@ public class ReportService {
                 FontFactory.getFont(FontFactory.HELVETICA_BOLD)));
         cell.setHorizontalAlignment(Element.ALIGN_CENTER);
         return cell;
+    }
+
+    private String safe(String value) {
+        return value == null || value.isBlank() ? "-" : value;
+    }
+
+    private String valueOrDash(String value) {
+        return value == null || value.isBlank() ? "-" : value;
+    }
+
+    private String deliveryAddress(Order order) {
+        String structured = java.util.stream.Stream.of(
+                        order.getShippingVillage(),
+                        order.getShippingCell(),
+                        order.getShippingSector(),
+                        order.getShippingDistrict(),
+                        order.getShippingProvince())
+                .filter(value -> value != null && !value.isBlank())
+                .collect(java.util.stream.Collectors.joining(", "));
+        if (!structured.isBlank()) return structured;
+        return safe(order.getShippingAddress());
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) return "-";
+        for (String value : values) {
+            if (value != null && !value.isBlank()) return value;
+        }
+        return "-";
+    }
+
+    private void addDeliveryNoteHeader(
+            Document document,
+            Order order,
+            com.lowagie.text.Font titleFont,
+            com.lowagie.text.Font bodyFont,
+            com.lowagie.text.Font smallFont) throws DocumentException {
+        PdfPTable headerTable = new PdfPTable(2);
+        headerTable.setWidthPercentage(100);
+        headerTable.setWidths(new float[]{1.2f, 4.8f});
+
+        PdfPCell logoCell = new PdfPCell();
+        logoCell.setBorder(PdfPCell.NO_BORDER);
+        logoCell.setPadding(0);
+        logoCell.setPaddingRight(14);
+        Image logo = loadLogo();
+        if (logo != null) {
+            logo.scaleToFit(72f, 72f);
+            logoCell.addElement(logo);
+        } else {
+            logoCell.addElement(new Paragraph("Luz Technology", bodyFont));
+        }
+        headerTable.addCell(logoCell);
+
+        PdfPCell titleCell = new PdfPCell();
+        titleCell.setBorder(PdfPCell.NO_BORDER);
+        titleCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        titleCell.setPadding(0);
+
+        Paragraph company = new Paragraph("Luz Technology", titleFont);
+        company.setAlignment(Element.ALIGN_RIGHT);
+        titleCell.addElement(company);
+
+        Paragraph subtitle = new Paragraph("Delivery Note", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13));
+        subtitle.setAlignment(Element.ALIGN_RIGHT);
+        titleCell.addElement(subtitle);
+
+        Paragraph tagline = new Paragraph("Go Digital Securely", smallFont);
+        tagline.setAlignment(Element.ALIGN_RIGHT);
+        titleCell.addElement(tagline);
+
+        Paragraph orderRef = new Paragraph("Order: " + safe(order.getOrderNumber()), bodyFont);
+        orderRef.setAlignment(Element.ALIGN_RIGHT);
+        titleCell.addElement(orderRef);
+
+        headerTable.addCell(titleCell);
+        document.add(headerTable);
+
+        PdfPTable divider = new PdfPTable(1);
+        divider.setWidthPercentage(100);
+        PdfPCell line = new PdfPCell(new Phrase(" "));
+        line.setBorder(PdfPCell.BOTTOM);
+        line.setBorderWidthBottom(1f);
+        line.setBorderColorBottom(java.awt.Color.LIGHT_GRAY);
+        line.setPaddingTop(6);
+        line.setPaddingBottom(6);
+        divider.addCell(line);
+        document.add(divider);
+    }
+
+    private Image loadLogo() {
+        for (String candidate : List.of(
+                "../ecommerce/public/logo.jpg",
+                "ecommerce/public/logo.jpg",
+                "src/main/resources/static/logo.jpg")) {
+            try {
+                Path path = Paths.get(candidate).toAbsolutePath().normalize();
+                if (Files.exists(path) && Files.isRegularFile(path)) {
+                    return Image.getInstance(path.toString());
+                }
+            } catch (Exception ignored) {
+                // Keep delivery note generation working even if the logo cannot be read.
+            }
+        }
+        return null;
     }
 }

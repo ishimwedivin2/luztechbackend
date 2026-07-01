@@ -86,6 +86,13 @@ public class CartController {
                         .taxRate(order.getTaxRate())
                         .paymentMethod(order.getPaymentMethod())
                         .shippingAddress(order.getShippingAddress())
+                        .shippingProvince(order.getShippingProvince())
+                        .shippingDistrict(order.getShippingDistrict())
+                        .shippingSector(order.getShippingSector())
+                        .shippingCell(order.getShippingCell())
+                        .shippingVillage(order.getShippingVillage())
+                        .deliveryInstructions(order.getDeliveryInstructions())
+                        .deliveryPhoneNumber(order.getDeliveryPhoneNumber())
                         .build();
         return ResponseEntity.ok(ApiResponse.success("Order created from cart", summary));
     }

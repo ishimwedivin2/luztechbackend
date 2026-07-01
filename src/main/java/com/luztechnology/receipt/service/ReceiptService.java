@@ -38,7 +38,8 @@ public class ReceiptService {
 
     @Transactional(readOnly = true)
     public byte[] generateReceiptPdf(UUID orderId) throws DocumentException {
-        ReceiptResponse receipt = getReceipt(orderId);
+        Order order = orderService.getOrderById(orderId);
+        ReceiptResponse receipt = toReceipt(order);
 
         Document document = new Document();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -64,6 +65,16 @@ public class ReceiptService {
         }
         document.add(new Paragraph("Payment: " + receipt.getPaymentMethod(), bodyFont));
         document.add(new Paragraph("Issued: " + receipt.getIssuedAt(), bodyFont));
+        document.add(new Paragraph(" "));
+
+        document.add(new Paragraph("Delivery Address", sectionFont));
+        document.add(new Paragraph("Full Delivery Address: " + deliveryAddress(order), bodyFont));
+        document.add(new Paragraph("Province: " + valueOrDash(order.getShippingProvince()), bodyFont));
+        document.add(new Paragraph("District: " + valueOrDash(order.getShippingDistrict()), bodyFont));
+        document.add(new Paragraph("Sector: " + valueOrDash(order.getShippingSector()), bodyFont));
+        document.add(new Paragraph("Cell: " + valueOrDash(order.getShippingCell()), bodyFont));
+        document.add(new Paragraph("Village: " + valueOrDash(order.getShippingVillage()), bodyFont));
+        document.add(new Paragraph("Landmark / Instructions: " + valueOrDash(order.getDeliveryInstructions()), bodyFont));
         document.add(new Paragraph(" "));
 
         PdfPTable table = new PdfPTable(4);
@@ -155,6 +166,23 @@ public class ReceiptService {
     private String formatAmount(BigDecimal amount) {
         if (amount == null) return "0";
         return "RWF " + String.format("%,.0f", amount);
+    }
+
+    private String deliveryAddress(Order order) {
+        String structured = java.util.stream.Stream.of(
+                        order.getShippingVillage(),
+                        order.getShippingCell(),
+                        order.getShippingSector(),
+                        order.getShippingDistrict(),
+                        order.getShippingProvince())
+                .filter(value -> value != null && !value.isBlank())
+                .collect(java.util.stream.Collectors.joining(", "));
+        if (!structured.isBlank()) return structured;
+        return valueOrDash(order.getShippingAddress());
+    }
+
+    private String valueOrDash(String value) {
+        return value == null || value.isBlank() ? "-" : value;
     }
 
     private void addAmountLine(Document document, String label, BigDecimal amount, Font font) throws DocumentException {

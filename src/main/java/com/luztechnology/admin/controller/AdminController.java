@@ -27,6 +27,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.sql.DataSource;
+import java.lang.management.ManagementFactory;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.List;
 import java.util.UUID;
@@ -41,6 +46,7 @@ public class AdminController {
     private final RoleRepository roleRepository;
     private final SystemBackupService systemBackupService;
     private final PasswordEncoder passwordEncoder;
+    private final DataSource dataSource;
 
     @GetMapping("/users")
     @PreAuthorize("hasRole('ADMIN')")
@@ -172,6 +178,51 @@ public class AdminController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<SystemBackup>> restoreBackup(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success("Backup restored", systemBackupService.restoreBackup(id)));
+    }
+
+    @GetMapping("/system/health")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getSystemHealth() {
+        Map<String, Object> health = new LinkedHashMap<>();
+
+        // App / version info
+        health.put("appName", "Luz Technology System");
+        health.put("appVersion", "1.0.0");
+        health.put("springBootVersion", "3.5.10");
+        health.put("javaVersion", System.getProperty("java.version"));
+        health.put("serverTime", Instant.now().toString());
+        health.put("uptimeMs", ManagementFactory.getRuntimeMXBean().getUptime());
+
+        // JVM memory
+        Runtime rt = Runtime.getRuntime();
+        long usedMb  = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
+        long totalMb = rt.totalMemory() / (1024 * 1024);
+        long maxMb   = rt.maxMemory()   / (1024 * 1024);
+        health.put("memoryUsedMb",  usedMb);
+        health.put("memoryTotalMb", totalMb);
+        health.put("memoryMaxMb",   maxMb);
+        health.put("memoryUsedPct", Math.round(100.0 * usedMb / maxMb));
+
+        // Disk space
+        java.io.File root = new java.io.File(".");
+        long diskTotalGb = root.getTotalSpace() / (1024 * 1024 * 1024);
+        long diskFreeGb  = root.getFreeSpace()  / (1024 * 1024 * 1024);
+        health.put("diskTotalGb", diskTotalGb);
+        health.put("diskFreeGb",  diskFreeGb);
+        health.put("diskUsedPct", diskTotalGb > 0
+                ? Math.round(100.0 * (diskTotalGb - diskFreeGb) / diskTotalGb) : 0);
+
+        // Database connectivity
+        String dbStatus = "DOWN";
+        try (var conn = dataSource.getConnection()) {
+            dbStatus = conn.isValid(2) ? "UP" : "DOWN";
+        } catch (Exception ignored) {}
+        health.put("databaseStatus", dbStatus);
+
+        // Thread info
+        health.put("activeThreads", ManagementFactory.getThreadMXBean().getThreadCount());
+
+        return ResponseEntity.ok(ApiResponse.success("System health retrieved", health));
     }
 
     private User getUser_(UUID userId) {
