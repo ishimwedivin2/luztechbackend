@@ -147,6 +147,13 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("User logged in successfully", authResponse));
     }
 
+    @PostMapping("/mfa/resend")
+    public ResponseEntity<ApiResponse<java.util.Map<String, String>>> resendMfa(
+            @RequestBody java.util.Map<String, String> body) {
+        String newMfaToken = mfaService.resendOtp(body.get("mfaToken"));
+        return ResponseEntity.ok(ApiResponse.success("MFA code resent successfully", java.util.Map.of("mfaToken", newMfaToken)));
+    }
+
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<TokenRefreshResponse>> refreshtoken(@Valid @RequestBody TokenRefreshRequest request) {
         String requestRefreshToken = request.getRefreshToken();

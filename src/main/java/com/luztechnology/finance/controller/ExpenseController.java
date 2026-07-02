@@ -62,9 +62,13 @@ public class ExpenseController {
     @PatchMapping("/{id}/status")
     public ResponseEntity<ApiResponse<Expense>> updateStatus(
             @PathVariable UUID id,
-            @RequestBody Map<String, String> request) {
+            @RequestBody(required = false) Map<String, String> request,
+            @RequestParam(required = false) String status) {
+        String requestedStatus = request != null && request.containsKey("status")
+                ? request.get("status")
+                : status;
         return ResponseEntity.ok(ApiResponse.success("Expense status updated",
-                expenseService.updateStatus(id, request.get("status"))));
+                expenseService.updateStatus(id, requestedStatus)));
     }
 
     @DeleteMapping("/{id}")

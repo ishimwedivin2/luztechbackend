@@ -69,8 +69,10 @@ public class ReturnService {
                 .orElseThrow(() -> new ResourceNotFoundException("Return request not found with id: " + id));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ReturnRequest getReturnByOrderId(UUID orderId) {
+        // Ensure refunded orders always have a corresponding return record for customer lookups.
+        syncRefundedOrders();
         return returnRequestRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Return request not found for order id: " + orderId));
     }

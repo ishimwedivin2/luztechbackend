@@ -59,6 +59,16 @@ public class MfaService {
     }
 
     @Transactional
+    public String resendOtp(String mfaToken) {
+        MfaOtp existingOtp = mfaOtpRepository.findByMfaToken(mfaToken)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid MFA token"));
+
+        User user = existingOtp.getUser();
+        mfaOtpRepository.deleteByUserAndUsedFalse(user);
+        return createAndSendOtp(user);
+    }
+
+    @Transactional
     public User verifyOtp(String mfaToken, String code) {
         MfaOtp otp = mfaOtpRepository.findByMfaToken(mfaToken)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid MFA token"));

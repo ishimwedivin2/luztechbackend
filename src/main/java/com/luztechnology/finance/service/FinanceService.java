@@ -158,6 +158,7 @@ public class FinanceService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal netRevenue = grossRevenue.subtract(refundTotal);
         BigDecimal expenseTotal = expenses.stream()
+                .filter(expense -> !"PENDING".equalsIgnoreCase(expense.getStatus()))
                 .map(expense -> safeAmount(expense.getAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal paidExpenseTotal = expenses.stream()

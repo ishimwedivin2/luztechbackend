@@ -66,6 +66,14 @@ public class WebSecurityConfig {
                 .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth.requestMatchers("/error", "/error/**").permitAll()
+                    .requestMatchers(
+                            "/", "/index.html", "/assets/**", "/favicon.svg", "/icons.svg", "/logo.jpg",
+                            "/home", "/login", "/register", "/forgot-password", "/reset-password",
+                            "/shop", "/cart", "/checkout", "/wishlist", "/profile", "/customer",
+                            "/support", "/support/tickets/**", "/product/**", "/inventory",
+                            "/admin", "/admin/**", "/employee", "/employee/**",
+                            "/support-agent", "/support-agent/**"
+                    ).permitAll()
                     .requestMatchers("/api/auth/**").permitAll()
                     .requestMatchers("/api/products", "/api/products/**").permitAll()
                     .requestMatchers("/api/categories", "/api/categories/**").permitAll()
