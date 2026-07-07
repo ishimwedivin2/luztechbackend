@@ -78,6 +78,7 @@ public class WebSecurityConfig {
                     .requestMatchers("/api/products", "/api/products/**").permitAll()
                     .requestMatchers("/api/categories", "/api/categories/**").permitAll()
                     .requestMatchers("/api/banners", "/api/banners/**").permitAll()
+                    .requestMatchers("/api/locations/provinces", "/api/locations/*/children").permitAll()
                     .requestMatchers("/api/support/knowledge-base/faqs", "/api/support/knowledge-base/faqs/**").permitAll()
                     .requestMatchers("/uploads/**").permitAll()
                     .requestMatchers("/ws", "/ws/**").permitAll()
