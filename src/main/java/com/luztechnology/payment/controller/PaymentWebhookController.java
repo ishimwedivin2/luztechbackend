@@ -37,6 +37,7 @@ public class PaymentWebhookController {
     private final OrderService orderService;
     private final PaymentReconciliationService reconciliationService;
     private final CartService cartService;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     @Value("${payment.stripe.webhook-secret:whsec_placeholder}")
     private String stripeWebhookSecret;
@@ -47,6 +48,22 @@ public class PaymentWebhookController {
             @RequestParam String paymentMethod) {
 
         Order order = orderService.getOrderById(orderId);
+
+        // Idempotency guard: if this order is already paid, don't re-initiate a second
+        // charge / transaction (e.g. the customer double-clicked the pay button).
+        if (order.getStatus() == OrderStatus.PAID) {
+            PaymentStatusResponse already = PaymentStatusResponse.builder()
+                    .orderId(order.getId())
+                    .orderNumber(order.getOrderNumber())
+                    .orderStatus("PAID")
+                    .paymentMethod(order.getPaymentMethod())
+                    .paymentReference(order.getPaymentReference())
+                    .paid(true)
+                    .totalAmount(order.getTotalAmount())
+                    .message("This order has already been paid.")
+                    .build();
+            return ResponseEntity.ok(ApiResponse.success("Payment already confirmed", already));
+        }
 
         PaymentService selectedService = paymentServices.stream()
                 .filter(service -> service.supports(paymentMethod))
@@ -209,8 +226,12 @@ public class PaymentWebhookController {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown provider webhook: " + provider));
 
         boolean isVerified = selectedService.verifyWebhook(payload, signature);
+        boolean failed = payloadIndicatesFailure(payload);
 
-        if (isVerified) {
+        // Only mark PAID when the callback both verifies AND does not report a
+        // failed/cancelled/declined status. This stops failed or cancelled payments
+        // from ever being recorded as "Paid".
+        if (isVerified && !failed) {
             Order paidOrder = orderService.updateOrderStatus(orderId, OrderStatus.PAID);
             reconciliationService.recordWebhook(paidOrder, provider, true);
             if (paidOrder.getCustomer() != null) {
@@ -220,9 +241,48 @@ public class PaymentWebhookController {
             return ResponseEntity.ok(ApiResponse.success("Webhook processed successfully", null));
         } else {
             reconciliationService.recordWebhook(orderService.getOrderById(orderId), provider, false);
-            logger.error("Failed to verify webhook payload for provider {}", provider);
-            return ResponseEntity.badRequest().body(ApiResponse.error("Invalid webhook signature or payload"));
+            String reason = failed ? "payment failed or was cancelled" : "invalid webhook signature or payload";
+            logger.warn("Order {} NOT marked paid via {} webhook — {} (verified={}, failed={})",
+                    orderId, provider, reason, isVerified, failed);
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error(failed ? "Payment failed or was cancelled" : "Invalid webhook signature or payload"));
         }
+    }
+
+    /**
+     * Inspects a provider webhook payload for an explicit failure/cancellation status.
+     * Returns true only when a recognised status field clearly reports non-success, so a
+     * malformed or statusless payload falls back to the provider's own verifyWebhook result.
+     */
+    private boolean payloadIndicatesFailure(String payload) {
+        if (payload == null || payload.isBlank()) return false;
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(payload);
+            for (String field : new String[]{"status", "result", "transactionStatus", "paymentStatus", "state"}) {
+                com.fasterxml.jackson.databind.JsonNode node = root.get(field);
+                if (node != null && node.isTextual()) {
+                    String value = node.asText().trim().toUpperCase();
+                    switch (value) {
+                        case "FAILED":
+                        case "FAILURE":
+                        case "CANCELLED":
+                        case "CANCELED":
+                        case "REJECTED":
+                        case "DECLINED":
+                        case "TIMEOUT":
+                        case "EXPIRED":
+                        case "ERROR":
+                            return true;
+                        default:
+                            break;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Not JSON / unparseable — defer to verifyWebhook, don't assume failure.
+            logger.debug("Could not parse webhook payload for status check: {}", e.getMessage());
+        }
+        return false;
     }
 
     /**

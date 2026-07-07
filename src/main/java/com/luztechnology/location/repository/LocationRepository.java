@@ -5,6 +5,7 @@ import com.luztechnology.location.entity.LocationType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface LocationRepository extends JpaRepository<Location, UUID> {
@@ -18,4 +19,9 @@ public interface LocationRepository extends JpaRepository<Location, UUID> {
     List<Location> findByParent_IdOrderByNameAsc(UUID parentId);
 
     List<Location> findByParent_IdAndEnabledTrueOrderByNameAsc(UUID parentId);
+
+    // Name-based lookups — used to validate a shipping address against the tree
+    Optional<Location> findFirstByParentIsNullAndNameIgnoreCase(String name);
+
+    Optional<Location> findFirstByParent_IdAndNameIgnoreCase(UUID parentId, String name);
 }

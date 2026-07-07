@@ -60,6 +60,37 @@ public class LocationService {
         return LocationDto.of(locationRepository.save(location));
     }
 
+    // ── Delivery restriction ──────────────────────────────────────────────────
+
+    /**
+     * Enforces that orders can only be placed to an enabled province and district.
+     * Called during customer checkout. Throws {@link IllegalArgumentException} (mapped
+     * to a 400) when the location is unknown or has been disabled by an admin/employee.
+     */
+    @Transactional(readOnly = true)
+    public void assertDeliverable(String province, String district) {
+        String prov = province == null ? "" : province.trim();
+        String dist = district == null ? "" : district.trim();
+        if (prov.isEmpty() || dist.isEmpty()) {
+            throw new IllegalArgumentException("Delivery province and district are required");
+        }
+
+        Location provinceNode = locationRepository.findFirstByParentIsNullAndNameIgnoreCase(prov)
+                .orElseThrow(() -> new IllegalArgumentException("We do not deliver to province: " + province));
+        if (!provinceNode.isEnabled()) {
+            throw new IllegalArgumentException("Ordering is currently unavailable for " + provinceNode.getName());
+        }
+
+        Location districtNode = locationRepository
+                .findFirstByParent_IdAndNameIgnoreCase(provinceNode.getId(), dist)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "We do not deliver to district: " + district + ", " + provinceNode.getName()));
+        if (!districtNode.isEnabled()) {
+            throw new IllegalArgumentException(
+                    "Ordering is currently unavailable for " + districtNode.getName() + ", " + provinceNode.getName());
+        }
+    }
+
     @Transactional
     public LocationDto toggle(UUID id) {
         Location location = locationRepository.findById(id)

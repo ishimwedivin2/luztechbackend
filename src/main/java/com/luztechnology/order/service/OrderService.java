@@ -59,6 +59,7 @@ public class OrderService {
     private final ShipmentRepository shipmentRepository;
     private final ReturnRequestRepository returnRequestRepository;
     private final CustomerAddressRepository customerAddressRepository;
+    private final com.luztechnology.location.service.LocationService locationService;
 
     @Transactional(readOnly = true)
     public List<Order> getAllOrders() {
@@ -138,6 +139,8 @@ public class OrderService {
 
     @Transactional
     public Order processOrderForCustomer(User customer, OrderRequestDTO request) {
+        // Enforce delivery restrictions: reject orders to a disabled/unknown province or district.
+        locationService.assertDeliverable(request.getShippingProvince(), request.getShippingDistrict());
         return createOrderFromRequest(request, customer, null, OrderStatus.PENDING, "ONLINE", null);
     }
 
@@ -269,11 +272,26 @@ public class OrderService {
     public Order updateOrderStatus(UUID id, OrderStatus newStatus) {
         Order order = getOrderById(id);
         OrderStatus oldStatus = order.getStatus();
+
+        // Idempotent: a no-op transition must not re-run side effects. This prevents
+        // duplicate receipt emails / tax records when a webhook or status poll fires
+        // more than once, or the customer double-clicks pay.
+        if (oldStatus == newStatus) {
+            return order;
+        }
+
+        // A failed/cancelled/refunded order must never be flipped to PAID. Guards
+        // against a late or replayed payment callback resurrecting a dead order.
+        if (newStatus == OrderStatus.PAID
+                && (oldStatus == OrderStatus.CANCELLED
+                    || oldStatus == OrderStatus.REFUNDED
+                    || oldStatus == OrderStatus.RETURNED)) {
+            throw new IllegalStateException("Cannot mark a " + oldStatus + " order as PAID");
+        }
+
         order.setStatus(newStatus);
         Order savedOrder = orderRepository.save(order);
-        if (oldStatus != newStatus) {
-            recordTrackingEvent(savedOrder, newStatus, buildTrackingNote(newStatus));
-        }
+        recordTrackingEvent(savedOrder, newStatus, buildTrackingNote(newStatus));
 
         // Notify online customers via WebSocket and persistence.
         if (savedOrder.getCustomer() != null) {
