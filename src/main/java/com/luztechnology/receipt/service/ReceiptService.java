@@ -5,6 +5,7 @@ import com.lowagie.text.DocumentException;
 import com.lowagie.text.Element;
 import com.lowagie.text.Font;
 import com.lowagie.text.FontFactory;
+import com.lowagie.text.Image;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.pdf.PdfPCell;
@@ -20,6 +21,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
@@ -51,7 +54,18 @@ public class ReceiptService {
         Font sectionFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
         Font bodyFont = FontFactory.getFont(FontFactory.HELVETICA, 11);
 
-        Paragraph header = new Paragraph("Luz Technology Receipt", headerFont);
+        Image logo = loadLogo();
+        if (logo != null) {
+            logo.scaleToFit(72f, 72f);
+            logo.setAlignment(Element.ALIGN_CENTER);
+            document.add(logo);
+        }
+
+        Paragraph brand = new Paragraph("Luz Technology", headerFont);
+        brand.setAlignment(Element.ALIGN_CENTER);
+        document.add(brand);
+
+        Paragraph header = new Paragraph("Payment Receipt", sectionFont);
         header.setAlignment(Element.ALIGN_CENTER);
         document.add(header);
         document.add(new Paragraph(" "));
@@ -87,13 +101,14 @@ public class ReceiptService {
         for (ReceiptItemResponse item : receipt.getItems()) {
             table.addCell(new PdfPCell(new Phrase(item.getProductName(), bodyFont)));
             table.addCell(new PdfPCell(new Phrase(String.valueOf(item.getQuantity()), bodyFont)));
-            table.addCell(new PdfPCell(new Phrase(formatAmount(item.getUnitPrice()), bodyFont)));
-            table.addCell(new PdfPCell(new Phrase(formatAmount(item.getSubTotal()), bodyFont)));
+            table.addCell(new PdfPCell(new Phrase(formatAmount(withTax(item.getUnitPrice(), receipt.getTaxRate())), bodyFont)));
+            table.addCell(new PdfPCell(new Phrase(formatAmount(withTax(item.getSubTotal(), receipt.getTaxRate())), bodyFont)));
         }
 
         document.add(table);
         document.add(new Paragraph(" "));
-        addAmountLine(document, "Subtotal: ", receipt.getSubTotalAmount(), bodyFont);
+        BigDecimal subtotalWithTax = receipt.getSubTotalAmount().add(receipt.getTaxAmount());
+        addAmountLine(document, "Subtotal (tax incl.): ", subtotalWithTax, bodyFont);
         if (receipt.getDiscountAmount() != null && receipt.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
             String discountLabel = receipt.getCouponCode() != null
                     ? "Discount (" + receipt.getCouponCode() + "): "
@@ -103,8 +118,8 @@ public class ReceiptService {
         BigDecimal taxRatePct = receipt.getTaxRate() != null
                 ? receipt.getTaxRate().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP)
                 : BigDecimal.valueOf(18);
-        addAmountLine(document, "Tax (" + taxRatePct.toPlainString() + "%): ", receipt.getTaxAmount(), bodyFont);
         addAmountLine(document, "Total Paid: ", receipt.getTotalAmount(), headerFont);
+        addAmountLine(document, "Tax (" + taxRatePct.toPlainString() + "%) included: ", receipt.getTaxAmount(), bodyFont);
 
         document.close();
         return out.toByteArray();
@@ -163,9 +178,32 @@ public class ReceiptService {
         return cell;
     }
 
+    private Image loadLogo() {
+        for (String candidate : List.of(
+                "../ecommerce/public/logo.jpg",
+                "ecommerce/public/logo.jpg",
+                "src/main/resources/static/logo.jpg")) {
+            try {
+                Path path = Path.of(candidate).toAbsolutePath().normalize();
+                if (Files.exists(path)) {
+                    return Image.getInstance(path.toString());
+                }
+            } catch (Exception ignored) {
+                // Keep receipt generation working even if the logo cannot be read.
+            }
+        }
+        return null;
+    }
+
     private String formatAmount(BigDecimal amount) {
         if (amount == null) return "0";
         return "RWF " + String.format("%,.0f", amount);
+    }
+
+    private BigDecimal withTax(BigDecimal amount, BigDecimal taxRate) {
+        if (amount == null) return BigDecimal.ZERO;
+        BigDecimal rate = taxRate == null ? BigDecimal.ZERO : taxRate;
+        return amount.multiply(BigDecimal.ONE.add(rate)).setScale(0, RoundingMode.HALF_UP);
     }
 
     private String deliveryAddress(Order order) {

@@ -17,6 +17,9 @@ public class POSReceiptResponse {
     private String customerEmail;
     private String paymentMethod;
     private String paymentReference;
+    private BigDecimal subTotalAmount;
+    private BigDecimal taxRate;
+    private BigDecimal taxAmount;
     private BigDecimal totalAmount;
     private LocalDateTime soldAt;
     private List<POSReceiptLineResponse> items;
