@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,8 +25,23 @@ public class OrderController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT')")
-    public ResponseEntity<ApiResponse<List<Order>>> getAllOrders() {
-        return ResponseEntity.ok(ApiResponse.success(orderService.getAllOrders()));
+    public ResponseEntity<ApiResponse<List<Order>>> getAllOrders(
+            @RequestParam(required = false) String customerName,
+            @RequestParam(required = false) String productName,
+            @RequestParam(required = false) String customerEmail,
+            @RequestParam(name = "order", required = false) String orderQuery,
+            @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) LocalDate date) {
+        LocalDateTime startDate = date != null ? date.atStartOfDay() : null;
+        LocalDateTime endDate = date != null ? date.plusDays(1).atStartOfDay() : null;
+        return ResponseEntity.ok(ApiResponse.success(orderService.searchOrders(
+                customerName,
+                productName,
+                customerEmail,
+                orderQuery,
+                status,
+                startDate,
+                endDate)));
     }
 
     @GetMapping("/{id}")

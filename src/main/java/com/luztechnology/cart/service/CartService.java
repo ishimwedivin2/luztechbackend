@@ -16,6 +16,7 @@ import com.luztechnology.order.service.OrderService;
 import com.luztechnology.product.entity.Product;
 import com.luztechnology.product.entity.ProductStatus;
 import com.luztechnology.product.repository.ProductRepository;
+import com.luztechnology.product.service.ProductPricingService;
 import com.luztechnology.user.dto.CustomerAddressRequest;
 import com.luztechnology.user.entity.CustomerAddress;
 import com.luztechnology.user.entity.User;
@@ -43,6 +44,7 @@ public class CartService {
     private final OrderService orderService;
     private final CouponService couponService;
     private final CustomerAddressService customerAddressService;
+    private final ProductPricingService productPricingService;
 
     @Transactional
     public CartResponse getCart(User user) {
@@ -126,7 +128,7 @@ public class CartService {
                     OrderRequestDTO.OrderItemDTO dto = new OrderRequestDTO.OrderItemDTO();
                     dto.setProductId(item.getProduct().getId());
                     dto.setQuantity(item.getQuantity());
-                    dto.setUnitPrice(item.getProduct().getPrice());
+                    dto.setUnitPrice(productPricingService.effectiveUnitPrice(item.getProduct()));
                     return dto;
                 })
                 .toList();
@@ -274,22 +276,31 @@ public class CartService {
     private CartResponse toResponse(Cart cart) {
         List<CartItemResponse> items = cart.getItems().stream()
                 .map(item -> {
-                    BigDecimal subTotal = item.getProduct().getPrice()
+                    Product product = item.getProduct();
+                    BigDecimal originalUnitPrice = productPricingService.originalUnitPrice(product);
+                    BigDecimal unitPrice = productPricingService.effectiveUnitPrice(product);
+                    BigDecimal unitDiscountAmount = productPricingService.unitDiscountAmount(product);
+                    BigDecimal lineDiscountAmount = unitDiscountAmount
                             .multiply(BigDecimal.valueOf(item.getQuantity()));
-                    String imageUrl = item.getProduct().getImages().stream()
+                    BigDecimal subTotal = unitPrice
+                            .multiply(BigDecimal.valueOf(item.getQuantity()));
+                    String imageUrl = product.getImages().stream()
                             .filter(img -> img.isPrimary())
                             .map(img -> img.getUrl())
                             .findFirst()
-                            .orElseGet(() -> item.getProduct().getImages().isEmpty()
+                            .orElseGet(() -> product.getImages().isEmpty()
                                     ? null
-                                    : item.getProduct().getImages().get(0).getUrl());
+                                    : product.getImages().get(0).getUrl());
                     return CartItemResponse.builder()
                             .id(item.getId())
-                            .productId(item.getProduct().getId())
-                            .productName(item.getProduct().getName())
-                            .sku(item.getProduct().getSku())
+                            .productId(product.getId())
+                            .productName(product.getName())
+                            .sku(product.getSku())
                             .quantity(item.getQuantity())
-                            .unitPrice(item.getProduct().getPrice())
+                            .originalUnitPrice(originalUnitPrice)
+                            .unitPrice(unitPrice)
+                            .discountPercentage(productPricingService.activeDiscountPercentage(product))
+                            .discountAmount(lineDiscountAmount)
                             .subTotal(subTotal)
                             .imageUrl(imageUrl)
                             .build();

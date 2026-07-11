@@ -20,6 +20,7 @@ import com.luztechnology.order.repository.ShipmentRepository;
 import com.luztechnology.product.entity.Product;
 import com.luztechnology.product.entity.ProductStatus;
 import com.luztechnology.product.repository.ProductRepository;
+import com.luztechnology.product.service.ProductPricingService;
 import com.luztechnology.user.entity.CustomerAddress;
 import com.luztechnology.user.repository.CustomerAddressRepository;
 import com.luztechnology.user.repository.UserRepository;
@@ -60,10 +61,50 @@ public class OrderService {
     private final ReturnRequestRepository returnRequestRepository;
     private final CustomerAddressRepository customerAddressRepository;
     private final com.luztechnology.location.service.LocationService locationService;
+    private final ProductPricingService productPricingService;
 
     @Transactional(readOnly = true)
     public List<Order> getAllOrders() {
-        return orderRepository.findAll();
+        return orderRepository.findAllByOrderByCreatedAtDesc();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Order> searchOrders(
+            String customerName,
+            String productName,
+            String customerEmail,
+            String orderQuery,
+            OrderStatus status,
+            LocalDateTime startDate,
+            LocalDateTime endDate) {
+        String normalizedCustomerName = blankToNull(customerName);
+        String normalizedProductName = blankToNull(productName);
+        String normalizedCustomerEmail = blankToNull(customerEmail);
+        String normalizedOrderQuery = blankToNull(orderQuery);
+
+        if (normalizedCustomerName == null
+                && normalizedProductName == null
+                && normalizedCustomerEmail == null
+                && normalizedOrderQuery == null
+                && status == null
+                && startDate == null
+                && endDate == null) {
+            return getAllOrders();
+        }
+
+        return orderRepository.searchOrders(
+                normalizedCustomerName,
+                normalizedProductName,
+                normalizedCustomerEmail,
+                normalizedOrderQuery,
+                status,
+                startDate,
+                endDate);
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.trim().isEmpty()) return null;
+        return value.trim();
     }
 
     @Transactional(readOnly = true)
@@ -193,7 +234,7 @@ public class OrderService {
             if (product.getStatus() != ProductStatus.ACTIVE) {
                 throw new IllegalStateException("Product is not available for purchase: " + product.getName());
             }
-            BigDecimal unitPrice = product.getPrice();
+            BigDecimal unitPrice = productPricingService.effectiveUnitPrice(product);
             OrderItem item = OrderItem.builder()
                     .order(order)
                     .product(product)

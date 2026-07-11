@@ -21,6 +21,9 @@ public class ProductResponse {
     private String name;
     private String description;
     private BigDecimal price;
+    private BigDecimal originalPrice;
+    private BigDecimal discountedPrice;
+    private BigDecimal discountAmount;
     private String sku;
     private ProductStatus status;
     private UUID categoryId;

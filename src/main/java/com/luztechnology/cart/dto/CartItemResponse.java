@@ -14,7 +14,10 @@ public class CartItemResponse {
     private String productName;
     private String sku;
     private Integer quantity;
+    private BigDecimal originalUnitPrice;
     private BigDecimal unitPrice;
+    private BigDecimal discountPercentage;
+    private BigDecimal discountAmount;
     private BigDecimal subTotal;
     private String imageUrl;          // primary product image for cart display
 }

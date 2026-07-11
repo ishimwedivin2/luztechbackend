@@ -37,6 +37,7 @@ public class ProductService {
     private final FileStorageService fileStorageService;
     private final InventoryItemRepository inventoryItemRepository;
     private final com.luztechnology.product.repository.ProductReviewRepository productReviewRepository;
+    private final ProductPricingService productPricingService;
 
     @Transactional(readOnly = true)
     public List<Product> getAllProducts() {
@@ -54,19 +55,26 @@ public class ProductService {
                 : p.getImages().stream().map(this::toImageDto).toList();
         long reviewsCount = productReviewRepository.countByProductId(p.getId());
         Double averageRating = productReviewRepository.findAverageRatingByProductId(p.getId());
+        java.math.BigDecimal originalPrice = productPricingService.originalUnitPrice(p);
+        java.math.BigDecimal discountedPrice = productPricingService.effectiveUnitPrice(p);
+        java.math.BigDecimal discountAmount = productPricingService.unitDiscountAmount(p);
+        java.math.BigDecimal activeDiscountPercentage = productPricingService.activeDiscountPercentage(p);
         return com.luztechnology.product.dto.ProductResponse.builder()
                 .id(p.getId())
                 .name(p.getName())
                 .description(p.getDescription())
                 .price(p.getPrice())
+                .originalPrice(originalPrice)
+                .discountedPrice(discountedPrice)
+                .discountAmount(discountAmount)
                 .sku(p.getSku())
                 .status(p.getStatus())
                 .categoryId(p.getCategory() == null ? null : p.getCategory().getId())
                 .categoryName(p.getCategory() == null ? null : p.getCategory().getName())
                 .images(images)
                 .featured(p.isFeatured())
-                .discountPercentage(p.getDiscount() != null ? p.getDiscount().getDiscountPercentage() : null)
-                .discountName(p.getDiscount() != null ? p.getDiscount().getName() : null)
+                .discountPercentage(activeDiscountPercentage)
+                .discountName(productPricingService.activeDiscountName(p))
                 .reviewsCount(reviewsCount)
                 .averageRating(averageRating)
                 .build();
