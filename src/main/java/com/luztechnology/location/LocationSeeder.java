@@ -2,9 +2,16 @@ package com.luztechnology.location;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.luztechnology.location.entity.Location;
-import com.luztechnology.location.entity.LocationType;
-import com.luztechnology.location.repository.LocationRepository;
+import com.luztechnology.location.entity.Cell;
+import com.luztechnology.location.entity.District;
+import com.luztechnology.location.entity.Province;
+import com.luztechnology.location.entity.Sector;
+import com.luztechnology.location.entity.Village;
+import com.luztechnology.location.repository.CellRepository;
+import com.luztechnology.location.repository.DistrictRepository;
+import com.luztechnology.location.repository.ProvinceRepository;
+import com.luztechnology.location.repository.SectorRepository;
+import com.luztechnology.location.repository.VillageRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,18 +23,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * One-time seeder that loads the Rwanda administrative hierarchy from
- * {@code resources/rwanda-locations.json} into the {@code locations} table.
- * <p>
- * The JSON is a nested object: province → district → sector → cell → [village...].
- * Every node is seeded as {@code enabled = true}; admins/employees toggle nodes
- * afterwards. Runs only when the table is empty, so re-running the app is safe and
- * never overrides toggles an operator has made.
+ * Seeds Rwanda administrative data from {@code resources/rwanda-locations.json}
+ * into normalized tables: provinces, districts, sectors, cells and villages.
+ *
+ * The JSON is a nested object: province -> district -> sector -> cell -> villages.
+ * Every row starts enabled. The seeder runs only when the province table is empty,
+ * so it will not overwrite admin/employee enable/disable decisions on restart.
  */
 @Component
 @RequiredArgsConstructor
@@ -35,23 +43,26 @@ public class LocationSeeder implements CommandLineRunner {
 
     private static final Logger logger = LoggerFactory.getLogger(LocationSeeder.class);
 
-    private final LocationRepository locationRepository;
+    private final ProvinceRepository provinceRepository;
+    private final DistrictRepository districtRepository;
+    private final SectorRepository sectorRepository;
+    private final CellRepository cellRepository;
+    private final VillageRepository villageRepository;
     private final ObjectMapper objectMapper;
 
-    // Villages are batched into one saveAll to avoid ~13k individual inserts.
-    private final List<Location> villageBatch = new ArrayList<>();
+    private final List<Village> villageBatch = new ArrayList<>();
 
     @Override
     @Transactional
     public void run(String... args) throws Exception {
-        if (locationRepository.count() > 0) {
-            logger.info("Locations already seeded ({} rows) — skipping.", locationRepository.count());
+        if (provinceRepository.count() > 0) {
+            logger.info("Locations already seeded ({} provinces) - skipping.", provinceRepository.count());
             return;
         }
 
         Resource resource = new ClassPathResource("rwanda-locations.json");
         if (!resource.exists()) {
-            logger.warn("rwanda-locations.json not found on classpath — skipping location seed.");
+            logger.warn("rwanda-locations.json not found on classpath - skipping location seed.");
             return;
         }
 
@@ -60,61 +71,106 @@ public class LocationSeeder implements CommandLineRunner {
             root = objectMapper.readTree(in);
         }
 
-        logger.info("Seeding Rwanda locations from rwanda-locations.json ...");
+        logger.info("Seeding Rwanda locations from rwanda-locations.json into normalized tables ...");
         Iterator<Map.Entry<String, JsonNode>> provinces = root.fields();
         while (provinces.hasNext()) {
             Map.Entry<String, JsonNode> province = provinces.next();
-            Location provinceNode = save(province.getKey(), LocationType.PROVINCE, null);
+            Province provinceNode = saveProvince(province.getKey());
             seedDistricts(province.getValue(), provinceNode);
         }
 
-        if (!villageBatch.isEmpty()) {
-            locationRepository.saveAll(villageBatch);
-            villageBatch.clear();
-        }
-        logger.info("Location seed complete: {} total nodes.", locationRepository.count());
+        flushVillages();
+
+        long total = provinceRepository.count()
+                + districtRepository.count()
+                + sectorRepository.count()
+                + cellRepository.count()
+                + villageRepository.count();
+        logger.info("Location seed complete: {} total nodes across normalized tables.", total);
     }
 
-    private void seedDistricts(JsonNode districts, Location parent) {
+    private void seedDistricts(JsonNode districts, Province parent) {
         Iterator<Map.Entry<String, JsonNode>> it = districts.fields();
         while (it.hasNext()) {
             Map.Entry<String, JsonNode> district = it.next();
-            Location districtNode = save(district.getKey(), LocationType.DISTRICT, parent);
+            District districtNode = saveDistrict(district.getKey(), parent);
             seedSectors(district.getValue(), districtNode);
         }
     }
 
-    private void seedSectors(JsonNode sectors, Location parent) {
+    private void seedSectors(JsonNode sectors, District parent) {
         Iterator<Map.Entry<String, JsonNode>> it = sectors.fields();
         while (it.hasNext()) {
             Map.Entry<String, JsonNode> sector = it.next();
-            Location sectorNode = save(sector.getKey(), LocationType.SECTOR, parent);
+            Sector sectorNode = saveSector(sector.getKey(), parent);
             seedCells(sector.getValue(), sectorNode);
         }
     }
 
-    private void seedCells(JsonNode cells, Location parent) {
+    private void seedCells(JsonNode cells, Sector parent) {
         Iterator<Map.Entry<String, JsonNode>> it = cells.fields();
         while (it.hasNext()) {
             Map.Entry<String, JsonNode> cell = it.next();
-            Location cellNode = save(cell.getKey(), LocationType.CELL, parent);
+            Cell cellNode = saveCell(cell.getKey(), parent);
+            Set<String> villageNamesInCell = new HashSet<>();
             for (JsonNode village : cell.getValue()) {
-                villageBatch.add(Location.builder()
-                        .name(village.asText())
-                        .type(LocationType.VILLAGE)
-                        .parent(cellNode)
+                String villageName = clean(village.asText());
+                if (villageName == null || !villageNamesInCell.add(villageName.toLowerCase())) {
+                    continue;
+                }
+                villageBatch.add(Village.builder()
+                        .name(villageName)
+                        .cell(cellNode)
                         .enabled(true)
                         .build());
+                if (villageBatch.size() >= 1000) {
+                    flushVillages();
+                }
             }
         }
     }
 
-    private Location save(String name, LocationType type, Location parent) {
-        return locationRepository.save(Location.builder()
+    private String clean(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private Province saveProvince(String name) {
+        return provinceRepository.save(Province.builder()
                 .name(name)
-                .type(type)
-                .parent(parent)
                 .enabled(true)
                 .build());
+    }
+
+    private District saveDistrict(String name, Province province) {
+        return districtRepository.save(District.builder()
+                .name(name)
+                .province(province)
+                .enabled(true)
+                .build());
+    }
+
+    private Sector saveSector(String name, District district) {
+        return sectorRepository.save(Sector.builder()
+                .name(name)
+                .district(district)
+                .enabled(true)
+                .build());
+    }
+
+    private Cell saveCell(String name, Sector sector) {
+        return cellRepository.save(Cell.builder()
+                .name(name)
+                .sector(sector)
+                .enabled(true)
+                .build());
+    }
+
+    private void flushVillages() {
+        if (!villageBatch.isEmpty()) {
+            villageRepository.saveAll(villageBatch);
+            villageBatch.clear();
+        }
     }
 }

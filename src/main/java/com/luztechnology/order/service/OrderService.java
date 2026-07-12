@@ -180,8 +180,13 @@ public class OrderService {
 
     @Transactional
     public Order processOrderForCustomer(User customer, OrderRequestDTO request) {
-        // Enforce delivery restrictions: reject orders to a disabled/unknown province or district.
-        locationService.assertDeliverable(request.getShippingProvince(), request.getShippingDistrict());
+        // Enforce delivery restrictions against the normalized Rwanda hierarchy.
+        locationService.assertDeliverable(
+                request.getShippingProvince(),
+                request.getShippingDistrict(),
+                request.getShippingSector(),
+                request.getShippingCell(),
+                request.getShippingVillage());
         return createOrderFromRequest(request, customer, null, OrderStatus.PENDING, "ONLINE", null);
     }
 

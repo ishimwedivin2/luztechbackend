@@ -1,6 +1,5 @@
 package com.luztechnology.location.dto;
 
-import com.luztechnology.location.entity.Location;
 import com.luztechnology.location.entity.LocationType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,7 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.UUID;
 
-/** Flat projection of a {@link Location} node returned to the frontend dropdowns. */
+/** Flat projection returned to the frontend dropdowns, independent of the backing table. */
 @Data
 @Builder
 @AllArgsConstructor
@@ -22,13 +21,13 @@ public class LocationDto {
     /** false for VILLAGE (leaf); lets the management UI know whether to allow drilling down. */
     private boolean hasChildren;
 
-    public static LocationDto of(Location location) {
+    public static LocationDto of(UUID id, String name, LocationType type, boolean enabled) {
         return LocationDto.builder()
-                .id(location.getId())
-                .name(location.getName())
-                .type(location.getType())
-                .enabled(location.isEnabled())
-                .hasChildren(location.getType() != LocationType.VILLAGE)
+                .id(id)
+                .name(name)
+                .type(type)
+                .enabled(enabled)
+                .hasChildren(type != LocationType.VILLAGE)
                 .build();
     }
 }
