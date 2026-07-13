@@ -8,6 +8,8 @@ import com.luztechnology.inventory.entity.Supplier;
 import com.luztechnology.inventory.repository.InventoryItemRepository;
 import com.luztechnology.inventory.repository.ProcurementOrderRepository;
 import com.luztechnology.inventory.repository.SupplierRepository;
+import com.luztechnology.product.entity.Product;
+import com.luztechnology.product.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ public class ProcurementService {
     private final SupplierRepository supplierRepository;
     private final InventoryItemRepository inventoryItemRepository;
     private final InventoryService inventoryService;
+    private final ProductRepository productRepository;
 
     @Transactional
     public ProcurementOrder createDraftOrder(InventoryItem item, Integer quantity) {
@@ -71,13 +74,38 @@ public class ProcurementService {
         InventoryItem item = inventoryItemRepository.findById(request.getInventoryItemId())
                 .orElseThrow(() -> new ResourceNotFoundException("Inventory item not found with id: " + request.getInventoryItemId()));
 
+        // Resolve the linked Product (via explicit productId or through InventoryItem)
+        Product product = null;
+        if (request.getProductId() != null) {
+            product = productRepository.findById(request.getProductId()).orElse(null);
+        }
+        if (product == null && item.getSku() != null) {
+            product = productRepository.findBySku(item.getSku()).orElse(null);
+        }
+
+        // Resolve unitCost: use explicitly provided value first, then product.costPrice, then ZERO
+        BigDecimal unitCost = request.getUnitCost();
+        if (unitCost == null || unitCost.compareTo(BigDecimal.ZERO) == 0) {
+            if (product != null && product.getCostPrice() != null
+                    && product.getCostPrice().compareTo(BigDecimal.ZERO) > 0) {
+                unitCost = product.getCostPrice();
+            } else {
+                unitCost = BigDecimal.ZERO;
+            }
+        }
+
+        // Compute totalCost = unitCost × quantityOrdered
+        BigDecimal totalCost = unitCost.multiply(BigDecimal.valueOf(request.getQuantityOrdered()));
+
         ProcurementOrder order = ProcurementOrder.builder()
                 .supplier(supplier)
                 .inventoryItem(item)
+                .product(product)
                 .quantityOrdered(request.getQuantityOrdered())
                 .quantityReceived(0)
                 .status("PENDING")
-                .totalCost(request.getTotalCost() == null ? BigDecimal.ZERO : request.getTotalCost())
+                .unitCost(unitCost)
+                .totalCost(totalCost)
                 .expectedDeliveryDate(request.getExpectedDeliveryDate() == null
                         ? LocalDate.now().plusDays(7)
                         : request.getExpectedDeliveryDate())
@@ -105,6 +133,13 @@ public class ProcurementService {
 
         order.setQuantityReceived(quantityReceived);
         order.setStatus(quantityReceived.equals(order.getQuantityOrdered()) ? "RECEIVED" : "PARTIALLY_RECEIVED");
+
+        // Update InventoryItem.unitCost to reflect the per-unit cost of this received stock
+        if (order.getUnitCost() != null && order.getUnitCost().compareTo(BigDecimal.ZERO) > 0) {
+            InventoryItem invItem = order.getInventoryItem();
+            invItem.setUnitCost(order.getUnitCost());
+            inventoryItemRepository.save(invItem);
+        }
 
         inventoryService.adjustStock(
                 order.getInventoryItem().getId(),

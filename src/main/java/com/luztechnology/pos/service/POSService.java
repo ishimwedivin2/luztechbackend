@@ -142,6 +142,12 @@ public class POSService {
                 .quantity(item.getQuantity())
                 .unitPrice(item.getUnitPrice())
                 .subTotal(item.getSubTotal())
+                .taxRate(item.getAppliedTaxRate())
+                .taxName(item.getAppliedTaxName())
+                .unitTaxAmount(item.getUnitTaxAmount())
+                .lineTaxAmount(item.getLineTaxAmount())
+                .unitPriceIncludingTax(item.getUnitPriceIncludingTax())
+                .lineTotalIncludingTax(item.getLineTotalIncludingTax())
                 .build();
     }
 

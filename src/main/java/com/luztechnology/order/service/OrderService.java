@@ -34,6 +34,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -143,6 +144,12 @@ public class OrderService {
                     .quantity(item.getQuantity())
                     .unitPrice(item.getUnitPrice())
                     .subTotal(item.getSubTotal())
+                    .taxRate(item.getAppliedTaxRate())
+                    .taxName(item.getAppliedTaxName())
+                    .unitTaxAmount(item.getUnitTaxAmount())
+                    .lineTaxAmount(item.getLineTaxAmount())
+                    .unitPriceIncludingTax(item.getUnitPriceIncludingTax())
+                    .lineTotalIncludingTax(item.getLineTotalIncludingTax())
                     .build();
         }).collect(Collectors.toList());
 
@@ -240,12 +247,29 @@ public class OrderService {
                 throw new IllegalStateException("Product is not available for purchase: " + product.getName());
             }
             BigDecimal unitPrice = productPricingService.effectiveUnitPrice(product);
+            BigDecimal taxRate = productPricingService.taxRate(product);
+            BigDecimal unitTaxAmount = productPricingService.taxAmount(unitPrice, taxRate);
+            BigDecimal unitPriceIncludingTax = unitPrice.add(unitTaxAmount).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal subTotal = unitPrice.multiply(BigDecimal.valueOf(dto.getQuantity())).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal lineTaxAmount = unitTaxAmount.multiply(BigDecimal.valueOf(dto.getQuantity())).setScale(2, RoundingMode.HALF_UP);
+            // Snapshot cost price for COGS tracking
+            BigDecimal unitCost = product.getCostPrice() != null ? product.getCostPrice() : BigDecimal.ZERO;
+            BigDecimal lineCost = unitCost.multiply(BigDecimal.valueOf(dto.getQuantity())).setScale(2, RoundingMode.HALF_UP);
             OrderItem item = OrderItem.builder()
                     .order(order)
                     .product(product)
                     .quantity(dto.getQuantity())
                     .unitPrice(unitPrice)
-                    .subTotal(unitPrice.multiply(BigDecimal.valueOf(dto.getQuantity())))
+                    .subTotal(subTotal)
+                    .appliedTaxRate(taxRate)
+                    .appliedTaxName(product.getTaxRate() == null ? null : product.getTaxRate().getName())
+                    .appliedTaxCode(product.getTaxRate() == null ? null : product.getTaxRate().getCode())
+                    .unitTaxAmount(unitTaxAmount)
+                    .lineTaxAmount(lineTaxAmount)
+                    .unitPriceIncludingTax(unitPriceIncludingTax)
+                    .lineTotalIncludingTax(subTotal.add(lineTaxAmount).setScale(2, RoundingMode.HALF_UP))
+                    .unitCost(unitCost)
+                    .lineCost(lineCost)
                     .build();
             reduceInventoryIfLinked(product, dto.getQuantity(), order.getOrderNumber());
             return item;
@@ -259,8 +283,15 @@ public class OrderService {
         BigDecimal discountAmount = request.getDiscountAmount() != null
                 ? request.getDiscountAmount().min(subTotal).max(BigDecimal.ZERO)
                 : BigDecimal.ZERO;
-        BigDecimal discountedSubTotal = subTotal.subtract(discountAmount);
-        BigDecimal taxAmount = taxService.calculateTax(discountedSubTotal);
+        if (discountAmount.compareTo(BigDecimal.ZERO) > 0 && subTotal.compareTo(BigDecimal.ZERO) > 0) {
+            applyOrderDiscountAcrossItems(items, subTotal, discountAmount);
+        }
+        BigDecimal discountedSubTotal = items.stream()
+                .map(OrderItem::getSubTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal taxAmount = items.stream()
+                .map(OrderItem::getLineTaxAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         order.setSubTotalAmount(subTotal);
         order.setDiscountAmount(discountAmount);
@@ -273,6 +304,34 @@ public class OrderService {
             taxService.recordTaxForPaidOrder(savedOrder);
         }
         return savedOrder;
+    }
+
+    private void applyOrderDiscountAcrossItems(List<OrderItem> items, BigDecimal originalSubTotal, BigDecimal discountAmount) {
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (int index = 0; index < items.size(); index++) {
+            OrderItem item = items.get(index);
+            BigDecimal lineDiscount = index == items.size() - 1
+                    ? discountAmount.subtract(allocated)
+                    : item.getSubTotal()
+                            .multiply(discountAmount)
+                            .divide(originalSubTotal, 2, RoundingMode.HALF_UP);
+            allocated = allocated.add(lineDiscount);
+            BigDecimal discountedLine = item.getSubTotal().subtract(lineDiscount).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal taxRate = item.getAppliedTaxRate() == null ? BigDecimal.ZERO : item.getAppliedTaxRate();
+            BigDecimal lineTax = productPricingService.taxAmount(discountedLine, taxRate);
+            BigDecimal unitPrice = item.getQuantity() == null || item.getQuantity() == 0
+                    ? discountedLine
+                    : discountedLine.divide(BigDecimal.valueOf(item.getQuantity()), 2, RoundingMode.HALF_UP);
+            BigDecimal unitTax = item.getQuantity() == null || item.getQuantity() == 0
+                    ? lineTax
+                    : lineTax.divide(BigDecimal.valueOf(item.getQuantity()), 2, RoundingMode.HALF_UP);
+            item.setSubTotal(discountedLine);
+            item.setUnitPrice(unitPrice);
+            item.setUnitTaxAmount(unitTax);
+            item.setLineTaxAmount(lineTax);
+            item.setUnitPriceIncludingTax(unitPrice.add(unitTax).setScale(2, RoundingMode.HALF_UP));
+            item.setLineTotalIncludingTax(discountedLine.add(lineTax).setScale(2, RoundingMode.HALF_UP));
+        }
     }
 
     private void reduceInventoryIfLinked(Product product, Integer quantity, String orderNumber) {

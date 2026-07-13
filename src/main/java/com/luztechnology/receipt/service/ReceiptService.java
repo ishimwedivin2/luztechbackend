@@ -101,8 +101,8 @@ public class ReceiptService {
         for (ReceiptItemResponse item : receipt.getItems()) {
             table.addCell(new PdfPCell(new Phrase(item.getProductName(), bodyFont)));
             table.addCell(new PdfPCell(new Phrase(String.valueOf(item.getQuantity()), bodyFont)));
-            table.addCell(new PdfPCell(new Phrase(formatAmount(withTax(item.getUnitPrice(), receipt.getTaxRate())), bodyFont)));
-            table.addCell(new PdfPCell(new Phrase(formatAmount(withTax(item.getSubTotal(), receipt.getTaxRate())), bodyFont)));
+            table.addCell(new PdfPCell(new Phrase(formatAmount(itemAmount(item.getUnitPriceIncludingTax(), item.getUnitPrice(), receipt.getTaxRate())), bodyFont)));
+            table.addCell(new PdfPCell(new Phrase(formatAmount(itemAmount(item.getLineTotalIncludingTax(), item.getSubTotal(), receipt.getTaxRate())), bodyFont)));
         }
 
         document.add(table);
@@ -115,11 +115,8 @@ public class ReceiptService {
                     : "Discount: ";
             addAmountLine(document, discountLabel, receipt.getDiscountAmount().negate(), bodyFont);
         }
-        BigDecimal taxRatePct = receipt.getTaxRate() != null
-                ? receipt.getTaxRate().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP)
-                : BigDecimal.valueOf(18);
         addAmountLine(document, "Total Paid: ", receipt.getTotalAmount(), headerFont);
-        addAmountLine(document, "Tax (" + taxRatePct.toPlainString() + "%) included: ", receipt.getTaxAmount(), bodyFont);
+        addAmountLine(document, "Tax included: ", receipt.getTaxAmount(), bodyFont);
 
         document.close();
         return out.toByteArray();
@@ -158,6 +155,12 @@ public class ReceiptService {
                 .quantity(item.getQuantity())
                 .unitPrice(item.getUnitPrice())
                 .subTotal(item.getSubTotal())
+                .taxRate(nullToZero(item.getAppliedTaxRate()))
+                .taxName(item.getAppliedTaxName())
+                .unitTaxAmount(nullToZero(item.getUnitTaxAmount()))
+                .lineTaxAmount(nullToZero(item.getLineTaxAmount()))
+                .unitPriceIncludingTax(itemAmount(item.getUnitPriceIncludingTax(), item.getUnitPrice(), item.getAppliedTaxRate()))
+                .lineTotalIncludingTax(itemAmount(item.getLineTotalIncludingTax(), item.getSubTotal(), item.getAppliedTaxRate()))
                 .build();
     }
 
@@ -204,6 +207,11 @@ public class ReceiptService {
         if (amount == null) return BigDecimal.ZERO;
         BigDecimal rate = taxRate == null ? BigDecimal.ZERO : taxRate;
         return amount.multiply(BigDecimal.ONE.add(rate)).setScale(0, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal itemAmount(BigDecimal preferred, BigDecimal base, BigDecimal taxRate) {
+        if (preferred != null) return preferred;
+        return withTax(base, taxRate);
     }
 
     private String deliveryAddress(Order order) {

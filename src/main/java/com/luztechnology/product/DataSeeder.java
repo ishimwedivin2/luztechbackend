@@ -1,5 +1,8 @@
 package com.luztechnology.product;
 
+import com.luztechnology.finance.entity.TaxRate;
+import com.luztechnology.finance.repository.TaxRateRepository;
+import com.luztechnology.finance.service.TaxRateService;
 import com.luztechnology.product.entity.Category;
 import com.luztechnology.product.repository.CategoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -7,6 +10,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Component
@@ -14,6 +18,7 @@ import java.util.List;
 public class DataSeeder implements ApplicationRunner {
 
     private final CategoryRepository categoryRepository;
+    private final TaxRateRepository taxRateRepository;
 
     private static final List<String[]> DEFAULT_CATEGORIES = List.of(
         new String[]{"Networking",         "Routers, switches, access points and network equipment"},
@@ -30,6 +35,7 @@ public class DataSeeder implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        seedTaxRates();
         for (String[] entry : DEFAULT_CATEGORIES) {
             String name = entry[0];
             if (categoryRepository.findByName(name).isEmpty()) {
@@ -40,6 +46,24 @@ public class DataSeeder implements ApplicationRunner {
                         .build()
                 );
             }
+        }
+    }
+
+    private void seedTaxRates() {
+        seedTaxRate(TaxRateService.DEFAULT_VAT_CODE, "VAT 18%", BigDecimal.valueOf(0.18), "Standard VAT rate");
+        seedTaxRate("REDUCED_10", "Reduced tax 10%", BigDecimal.valueOf(0.10), "Reduced tax rate");
+        seedTaxRate("NO_VAT", "No VAT", BigDecimal.ZERO, "Tax exempt");
+    }
+
+    private void seedTaxRate(String code, String name, BigDecimal rate, String description) {
+        if (taxRateRepository.findByCode(code).isEmpty()) {
+            taxRateRepository.save(TaxRate.builder()
+                    .code(code)
+                    .name(name)
+                    .rate(rate)
+                    .description(description)
+                    .active(true)
+                    .build());
         }
     }
 }

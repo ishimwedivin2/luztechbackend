@@ -15,8 +15,12 @@ public class ProfitLossResponse {
     private BigDecimal refunds;
     private BigDecimal netSales;
     private BigDecimal taxCollected;
-    private BigDecimal operatingExpenses;
+    /** Cost of Goods Sold — sum of OrderItem.lineCost. */
+    private BigDecimal cogs;
+    /** Gross Profit = Net Sales − COGS. */
     private BigDecimal grossProfit;
+    private BigDecimal operatingExpenses;
+    /** Net Profit = Gross Profit − Operating Expenses. */
     private BigDecimal netProfit;
     private BigDecimal profitMarginPercent;
 }

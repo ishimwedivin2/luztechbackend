@@ -6,6 +6,7 @@ import com.luztechnology.product.entity.Category;
 import com.luztechnology.product.entity.Product;
 import com.luztechnology.product.entity.ProductImage;
 import com.luztechnology.product.entity.ProductStatus;
+import com.luztechnology.finance.entity.TaxRate;
 import com.luztechnology.product.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -69,8 +70,8 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Product>> getProductById(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.success(productService.getProductById(id)));
+    public ResponseEntity<ApiResponse<com.luztechnology.product.dto.ProductResponse>> getProductById(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(productService.toDto(productService.getProductById(id))));
     }
 
     @PostMapping
@@ -88,6 +89,7 @@ public class ProductController {
             @RequestParam("sku") String sku,
             @RequestParam("status") ProductStatus status,
             @RequestParam(value = "categoryId", required = false) UUID categoryId,
+            @RequestParam(value = "taxRateId", required = false) UUID taxRateId,
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "altText", defaultValue = "") String altText) {
 
@@ -100,7 +102,11 @@ public class ProductController {
                 .price(price)
                 .sku(sku)
                 .status(status)
+                .taxRate(taxRateId == null ? null : TaxRate.builder().build())
                 .build();
+        if (taxRateId != null) {
+            product.getTaxRate().setId(taxRateId);
+        }
 
         Product savedProduct = productService.createProductWithImage(product, fileUrl, altText);
 

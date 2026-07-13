@@ -15,6 +15,8 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -45,13 +47,23 @@ public class TaxService {
             throw new IllegalStateException("Tax can only be recorded for paid orders");
         }
 
+        if (order.getOrderItems() != null && order.getOrderItems().stream().anyMatch(item -> item.getAppliedTaxRate() != null)) {
+            TaxRecord last = null;
+            Map<BigDecimal, List<com.luztechnology.order.entity.OrderItem>> byRate = order.getOrderItems().stream()
+                    .collect(Collectors.groupingBy(item -> item.getAppliedTaxRate() == null ? BigDecimal.ZERO : item.getAppliedTaxRate()));
+            for (Map.Entry<BigDecimal, List<com.luztechnology.order.entity.OrderItem>> entry : byRate.entrySet()) {
+                last = recordTaxGroup(order, entry.getKey(), entry.getValue());
+            }
+            return last;
+        }
+
         String referenceId = order.getOrderNumber();
         TaxRecord taxRecord = taxRecordRepository.findByReferenceIdAndTaxType(referenceId, SALES_TAX_TYPE)
                 .orElseGet(TaxRecord::new);
 
         LocalDate taxDate = order.getCreatedAt() == null ? LocalDate.now() : order.getCreatedAt().toLocalDate();
         taxRecord.setTaxType(SALES_TAX_TYPE);
-        taxRecord.setTaxableAmount(order.getSubTotalAmount());
+        taxRecord.setTaxableAmount(safe(order.getSubTotalAmount()).subtract(safe(order.getDiscountAmount())).max(BigDecimal.ZERO));
         taxRecord.setTaxRate(order.getTaxRate());
         taxRecord.setAmount(order.getTaxAmount());
         taxRecord.setOrderId(order.getId());
@@ -61,6 +73,36 @@ public class TaxService {
         taxRecord.setStatus(PENDING_STATUS);
         taxRecord.setReferenceId(referenceId);
 
+        return taxRecordRepository.save(taxRecord);
+    }
+
+    private TaxRecord recordTaxGroup(
+            Order order,
+            BigDecimal taxRate,
+            List<com.luztechnology.order.entity.OrderItem> items) {
+        String rateLabel = taxRate.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).toPlainString();
+        String taxType = SALES_TAX_TYPE + "_" + rateLabel;
+        String referenceId = order.getOrderNumber() + "-" + rateLabel;
+        TaxRecord taxRecord = taxRecordRepository.findByReferenceIdAndTaxType(referenceId, taxType)
+                .orElseGet(TaxRecord::new);
+        LocalDate taxDate = order.getCreatedAt() == null ? LocalDate.now() : order.getCreatedAt().toLocalDate();
+        BigDecimal taxableAmount = items.stream()
+                .map(item -> safe(item.getSubTotal()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal taxAmount = items.stream()
+                .map(item -> safe(item.getLineTaxAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        taxRecord.setTaxType(taxType);
+        taxRecord.setTaxableAmount(taxableAmount);
+        taxRecord.setTaxRate(taxRate);
+        taxRecord.setAmount(taxAmount);
+        taxRecord.setOrderId(order.getId());
+        taxRecord.setOrderNumber(order.getOrderNumber());
+        taxRecord.setTaxDate(taxDate);
+        taxRecord.setFilingDate(taxDate.withDayOfMonth(taxDate.lengthOfMonth()));
+        taxRecord.setStatus(PENDING_STATUS);
+        taxRecord.setReferenceId(referenceId);
         return taxRecordRepository.save(taxRecord);
     }
 
@@ -116,5 +158,9 @@ public class TaxService {
             return "\"" + text.replace("\"", "\"\"") + "\"";
         }
         return text;
+    }
+
+    private BigDecimal safe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 }

@@ -55,6 +55,7 @@ public class FinanceService {
                 .netRevenue(totals.netRevenue())
                 .expenses(totals.expenses())
                 .taxCollected(totals.taxCollected())
+                .cogs(totals.cogs())
                 .grossProfit(totals.grossProfit())
                 .netProfit(totals.netProfit())
                 .accountsReceivable(totals.accountsReceivable())
@@ -80,6 +81,7 @@ public class FinanceService {
                 .refunds(totals.refunds())
                 .netSales(totals.netRevenue())
                 .taxCollected(totals.taxCollected())
+                .cogs(totals.cogs())
                 .operatingExpenses(totals.expenses())
                 .grossProfit(totals.grossProfit())
                 .netProfit(totals.netProfit())
@@ -98,6 +100,7 @@ public class FinanceService {
                 .netRevenue(totals.netRevenue())
                 .taxCollected(totals.taxCollected())
                 .taxableRevenue(totals.taxableRevenue())
+                .cogs(totals.cogs())
                 .operatingExpenses(totals.expenses())
                 .paidExpenses(totals.paidExpenses())
                 .pendingExpenses(totals.pendingExpenses())
@@ -123,10 +126,11 @@ public class FinanceService {
         csv.append("Refunds,").append(report.getRefunds()).append('\n');
         csv.append("Net Revenue,").append(report.getNetRevenue()).append('\n');
         csv.append("Tax Collected,").append(report.getTaxCollected()).append('\n');
+        csv.append("COGS (Cost of Goods Sold),").append(report.getCogs()).append('\n');
+        csv.append("Gross Profit,").append(report.getGrossProfit()).append('\n');
         csv.append("Operating Expenses,").append(report.getOperatingExpenses()).append('\n');
         csv.append("Paid Expenses,").append(report.getPaidExpenses()).append('\n');
         csv.append("Pending Expenses,").append(report.getPendingExpenses()).append('\n');
-        csv.append("Gross Profit,").append(report.getGrossProfit()).append('\n');
         csv.append("Net Profit,").append(report.getNetProfit()).append('\n');
         csv.append("Accounts Receivable,").append(report.getAccountsReceivable()).append('\n');
         csv.append("Tax Liability,").append(report.getTaxLiability()).append('\n');
@@ -178,7 +182,15 @@ public class FinanceService {
         BigDecimal accountsReceivable = receivableOrders.stream()
                 .map(order -> safeAmount(order.getTotalAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal grossProfit = netRevenue.subtract(taxCollected);
+
+        // COGS = sum of OrderItem.lineCost (cost price × qty snapshot at time of sale)
+        BigDecimal cogs = revenueOrders.stream()
+                .flatMap(order -> order.getOrderItems().stream())
+                .map(item -> item.getLineCost() != null ? item.getLineCost() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Gross Profit = Net Revenue − COGS  (NOT netRevenue − tax)
+        BigDecimal grossProfit = netRevenue.subtract(cogs);
 
         return new FinanceTotals(
                 grossRevenue,
@@ -190,6 +202,7 @@ public class FinanceService {
                 taxCollected,
                 taxableRevenue,
                 accountsReceivable,
+                cogs,
                 grossProfit,
                 grossProfit.subtract(expenseTotal),
                 revenueOrders.size(),
@@ -221,6 +234,7 @@ public class FinanceService {
             BigDecimal taxCollected,
             BigDecimal taxableRevenue,
             BigDecimal accountsReceivable,
+            BigDecimal cogs,
             BigDecimal grossProfit,
             BigDecimal netProfit,
             long paidOrders,

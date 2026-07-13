@@ -9,7 +9,13 @@ import java.util.UUID;
 public class ProductCreateRequest {
     private String name;
     private String description;
+
+    /** Selling price — what the customer pays before tax. */
     private BigDecimal price;
+
+    /** Cost price — what the business paid the supplier per unit. */
+    private BigDecimal costPrice;
+
     private String sku;
     private ProductStatus status;
     private UUID categoryId;

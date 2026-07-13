@@ -30,9 +30,32 @@ public class OrderItem extends BaseEntity {
     @Column(nullable = false)
     private Integer quantity;
 
+    /** Selling price per unit at time of sale (after any discount, before tax). */
     @Column(nullable = false)
     private BigDecimal unitPrice;
 
     @Column(nullable = false)
     private BigDecimal subTotal;
+
+    // ── Tax fields ───────────────────────────────────────────────────────────
+    private BigDecimal appliedTaxRate;
+    private String appliedTaxName;
+    private String appliedTaxCode;
+    private BigDecimal unitTaxAmount;
+    private BigDecimal lineTaxAmount;
+    private BigDecimal unitPriceIncludingTax;
+    private BigDecimal lineTotalIncludingTax;
+
+    // ── Cost / COGS snapshot ─────────────────────────────────────────────────
+    /**
+     * Snapshot of product.costPrice at the moment of sale.
+     * Locked-in so profit calculations remain accurate even if cost prices change later.
+     */
+    private BigDecimal unitCost;
+
+    /**
+     * unitCost × quantity — the Cost of Goods Sold for this line.
+     * Summed across all order items to compute COGS in financial reports.
+     */
+    private BigDecimal lineCost;
 }

@@ -279,11 +279,17 @@ public class CartService {
                     Product product = item.getProduct();
                     BigDecimal originalUnitPrice = productPricingService.originalUnitPrice(product);
                     BigDecimal unitPrice = productPricingService.effectiveUnitPrice(product);
+                    BigDecimal taxRate = productPricingService.taxRate(product);
+                    BigDecimal originalUnitPriceIncludingTax = productPricingService.priceIncludingTax(originalUnitPrice, taxRate);
+                    BigDecimal unitTaxAmount = productPricingService.taxAmount(unitPrice, taxRate);
+                    BigDecimal unitPriceIncludingTax = unitPrice.add(unitTaxAmount);
                     BigDecimal unitDiscountAmount = productPricingService.unitDiscountAmount(product);
                     BigDecimal lineDiscountAmount = unitDiscountAmount
                             .multiply(BigDecimal.valueOf(item.getQuantity()));
                     BigDecimal subTotal = unitPrice
                             .multiply(BigDecimal.valueOf(item.getQuantity()));
+                    BigDecimal lineTaxAmount = unitTaxAmount.multiply(BigDecimal.valueOf(item.getQuantity()));
+                    BigDecimal lineTotalIncludingTax = subTotal.add(lineTaxAmount);
                     String imageUrl = product.getImages().stream()
                             .filter(img -> img.isPrimary())
                             .map(img -> img.getUrl())
@@ -298,7 +304,15 @@ public class CartService {
                             .sku(product.getSku())
                             .quantity(item.getQuantity())
                             .originalUnitPrice(originalUnitPrice)
+                            .originalUnitPriceIncludingTax(originalUnitPriceIncludingTax)
                             .unitPrice(unitPrice)
+                            .unitPriceIncludingTax(unitPriceIncludingTax)
+                            .taxRate(taxRate)
+                            .taxName(product.getTaxRate() == null ? null : product.getTaxRate().getName())
+                            .taxCode(product.getTaxRate() == null ? null : product.getTaxRate().getCode())
+                            .unitTaxAmount(unitTaxAmount)
+                            .lineTaxAmount(lineTaxAmount)
+                            .lineTotalIncludingTax(lineTotalIncludingTax)
                             .discountPercentage(productPricingService.activeDiscountPercentage(product))
                             .discountAmount(lineDiscountAmount)
                             .subTotal(subTotal)
@@ -308,7 +322,13 @@ public class CartService {
                 .toList();
 
         BigDecimal total = items.stream()
+                .map(CartItemResponse::getLineTotalIncludingTax)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal subTotalExcludingTax = items.stream()
                 .map(CartItemResponse::getSubTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal taxTotal = items.stream()
+                .map(CartItemResponse::getLineTaxAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         int totalItems = items.stream().mapToInt(CartItemResponse::getQuantity).sum();
@@ -317,6 +337,8 @@ public class CartService {
                 .id(cart.getId())
                 .items(items)
                 .totalAmount(total)
+                .subTotalExcludingTax(subTotalExcludingTax)
+                .taxTotal(taxTotal)
                 .totalItems(totalItems)
                 .build();
     }

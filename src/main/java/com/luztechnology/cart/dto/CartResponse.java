@@ -13,5 +13,7 @@ public class CartResponse {
     private UUID id;
     private List<CartItemResponse> items;
     private BigDecimal totalAmount;
+    private BigDecimal subTotalExcludingTax;
+    private BigDecimal taxTotal;
     private int totalItems;           // sum of all item quantities
 }

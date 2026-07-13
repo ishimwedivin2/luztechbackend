@@ -15,4 +15,10 @@ public class OrderItemResponse {
     private Integer quantity;
     private BigDecimal unitPrice;
     private BigDecimal subTotal;
+    private BigDecimal taxRate;
+    private String taxName;
+    private BigDecimal unitTaxAmount;
+    private BigDecimal lineTaxAmount;
+    private BigDecimal unitPriceIncludingTax;
+    private BigDecimal lineTotalIncludingTax;
 }

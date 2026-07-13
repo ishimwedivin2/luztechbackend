@@ -16,10 +16,14 @@ public class FinancialManagementResponse {
     private BigDecimal netRevenue;
     private BigDecimal taxCollected;
     private BigDecimal taxableRevenue;
+    /** Cost of Goods Sold — sum of OrderItem.lineCost for all revenue orders. */
+    private BigDecimal cogs;
     private BigDecimal operatingExpenses;
     private BigDecimal paidExpenses;
     private BigDecimal pendingExpenses;
+    /** Gross Profit = Net Revenue − COGS. */
     private BigDecimal grossProfit;
+    /** Net Profit = Gross Profit − Operating Expenses. */
     private BigDecimal netProfit;
     private BigDecimal accountsReceivable;
     private BigDecimal taxLiability;

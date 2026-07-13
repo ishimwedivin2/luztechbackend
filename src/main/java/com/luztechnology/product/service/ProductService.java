@@ -1,27 +1,29 @@
 package com.luztechnology.product.service;
 
 import com.luztechnology.common.exception.ResourceNotFoundException;
+import com.luztechnology.common.service.FileStorageService;
+import com.luztechnology.finance.entity.TaxRate;
+import com.luztechnology.finance.repository.TaxRateRepository;
+import com.luztechnology.finance.service.TaxRateService;
 import com.luztechnology.inventory.entity.InventoryItem;
 import com.luztechnology.inventory.repository.InventoryItemRepository;
 import com.luztechnology.product.entity.Category;
 import com.luztechnology.product.entity.Discount;
 import com.luztechnology.product.entity.Product;
+import com.luztechnology.product.entity.ProductImage;
 import com.luztechnology.product.entity.ProductStatus;
 import com.luztechnology.product.repository.CategoryRepository;
 import com.luztechnology.product.repository.DiscountRepository;
-import com.luztechnology.product.repository.ProductRepository;
-import com.luztechnology.product.entity.ProductImage;
 import com.luztechnology.product.repository.ProductImageRepository;
-import com.luztechnology.common.service.FileStorageService;
+import com.luztechnology.product.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.transaction.annotation.Transactional;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -33,11 +35,13 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final DiscountRepository discountRepository;
+    private final TaxRateRepository taxRateRepository;
     private final ProductImageRepository productImageRepository;
     private final FileStorageService fileStorageService;
     private final InventoryItemRepository inventoryItemRepository;
     private final com.luztechnology.product.repository.ProductReviewRepository productReviewRepository;
     private final ProductPricingService productPricingService;
+    private final TaxRateService taxRateService;
 
     @Transactional(readOnly = true)
     public List<Product> getAllProducts() {
@@ -59,14 +63,30 @@ public class ProductService {
         java.math.BigDecimal discountedPrice = productPricingService.effectiveUnitPrice(p);
         java.math.BigDecimal discountAmount = productPricingService.unitDiscountAmount(p);
         java.math.BigDecimal activeDiscountPercentage = productPricingService.activeDiscountPercentage(p);
+        java.math.BigDecimal taxRate = productPricingService.taxRate(p);
+        java.math.BigDecimal taxAmount = productPricingService.effectiveUnitTaxAmount(p);
+        java.math.BigDecimal costPrice = productPricingService.costPrice(p);
+        java.math.BigDecimal profitPerUnit = productPricingService.profitPerUnit(p);
+        java.math.BigDecimal profitMarginPercent = productPricingService.profitMarginPercent(p);
         return com.luztechnology.product.dto.ProductResponse.builder()
                 .id(p.getId())
                 .name(p.getName())
                 .description(p.getDescription())
                 .price(p.getPrice())
+                .costPrice(costPrice)
+                .profitPerUnit(profitPerUnit)
+                .profitMarginPercent(profitMarginPercent)
                 .originalPrice(originalPrice)
                 .discountedPrice(discountedPrice)
                 .discountAmount(discountAmount)
+                .priceIncludingTax(productPricingService.originalUnitPriceIncludingTax(p))
+                .discountedPriceIncludingTax(productPricingService.effectiveUnitPriceIncludingTax(p))
+                .taxAmount(taxAmount)
+                .taxRate(taxRate)
+                .taxRateId(p.getTaxRate() == null ? null : p.getTaxRate().getId())
+                .taxName(p.getTaxRate() == null ? null : p.getTaxRate().getName())
+                .taxCode(p.getTaxRate() == null ? null : p.getTaxRate().getCode())
+                .taxIncluded(taxRate.compareTo(java.math.BigDecimal.ZERO) > 0)
                 .sku(p.getSku())
                 .status(p.getStatus())
                 .categoryId(p.getCategory() == null ? null : p.getCategory().getId())
@@ -91,6 +111,7 @@ public class ProductService {
                                 .quantity(0)
                                 .lowStockThreshold(5)
                                 .location("Main Warehouse")
+                                .unitCost(product.getCostPrice())
                                 .build());
                     } catch (DataIntegrityViolationException e) {
                         return inventoryItemRepository.findBySku(product.getSku()).orElseThrow();
@@ -162,6 +183,7 @@ public class ProductService {
 
     @Transactional
     public Product createProduct(Product product) {
+        ensureTaxRate(product);
         Product saved = productRepository.save(product);
         ensureInventoryItem(saved);
         return saved;
@@ -169,6 +191,7 @@ public class ProductService {
 
     @Transactional
     public Product createProductWithImage(Product product, String imageUrl, String altText) {
+        ensureTaxRate(product);
         Product savedProduct = productRepository.save(product);
 
         ProductImage image = ProductImage.builder()
@@ -223,23 +246,46 @@ public class ProductService {
         product.setName(details.getName());
         product.setDescription(details.getDescription());
         product.setPrice(details.getPrice());
+        if (details.getCostPrice() != null) {
+            product.setCostPrice(details.getCostPrice());
+        }
         product.setSku(details.getSku());
         product.setStatus(details.getStatus());
         product.setFeatured(details.isFeatured());
+        if (details.getTaxRate() != null && details.getTaxRate().getId() != null) {
+            taxRateRepository.findById(details.getTaxRate().getId()).ifPresent(product::setTaxRate);
+        } else if (details.getTaxRate() == null) {
+            product.setTaxRate(null);
+        }
         if (details.getCategory() != null && details.getCategory().getId() != null) {
             categoryRepository.findById(details.getCategory().getId())
                     .ifPresent(product::setCategory);
         }
         Product saved = productRepository.save(product);
-        // Update inventory quantity if a stock value was provided
-        if (details.getStock() != null && saved.getInventoryItem() != null) {
+        if (saved.getInventoryItem() != null) {
             InventoryItem inv = inventoryItemRepository.findById(saved.getInventoryItem().getId()).orElse(null);
             if (inv != null) {
-                inv.setQuantity(details.getStock());
+                if (details.getStock() != null) {
+                    inv.setQuantity(details.getStock());
+                }
+                if (details.getCostPrice() != null) {
+                    inv.setUnitCost(details.getCostPrice());
+                }
                 inventoryItemRepository.save(inv);
             }
         }
         return saved;
+    }
+
+    private void ensureTaxRate(Product product) {
+        if (product.getTaxRate() != null && product.getTaxRate().getId() != null) {
+            TaxRate managed = taxRateRepository.findById(product.getTaxRate().getId()).orElse(null);
+            product.setTaxRate(managed);
+            return;
+        }
+        if (product.getTaxRate() == null) {
+            product.setTaxRate(taxRateService.getDefaultTaxRate());
+        }
     }
 
     @Transactional
@@ -247,7 +293,6 @@ public class ProductService {
         Product product = getProductById(productId);
 
         if (isPrimary) {
-            // Reset other images' primary status
             product.getImages().forEach(img -> img.setPrimary(false));
         }
 

@@ -15,7 +15,15 @@ public class CartItemResponse {
     private String sku;
     private Integer quantity;
     private BigDecimal originalUnitPrice;
+    private BigDecimal originalUnitPriceIncludingTax;
     private BigDecimal unitPrice;
+    private BigDecimal unitPriceIncludingTax;
+    private BigDecimal taxRate;
+    private String taxName;
+    private String taxCode;
+    private BigDecimal unitTaxAmount;
+    private BigDecimal lineTaxAmount;
+    private BigDecimal lineTotalIncludingTax;
     private BigDecimal discountPercentage;
     private BigDecimal discountAmount;
     private BigDecimal subTotal;
