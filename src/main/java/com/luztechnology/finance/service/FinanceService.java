@@ -160,7 +160,13 @@ public class FinanceService {
         BigDecimal refundTotal = refunds.stream()
                 .map(refund -> safeAmount(refund.getRefundedAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal netRevenue = grossRevenue.subtract(refundTotal);
+        BigDecimal taxCollected = taxes.stream()
+                .map(tax -> safeAmount(tax.getAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                
+        // Net Revenue excludes refunds and taxes collected
+        BigDecimal netRevenue = grossRevenue.subtract(refundTotal).subtract(taxCollected);
+        
         BigDecimal expenseTotal = expenses.stream()
                 .filter(expense -> !"PENDING".equalsIgnoreCase(expense.getStatus()))
                 .map(expense -> safeAmount(expense.getAmount()))
@@ -172,9 +178,6 @@ public class FinanceService {
         BigDecimal pendingExpenseTotal = expenses.stream()
                 .filter(expense -> "PENDING".equalsIgnoreCase(expense.getStatus()))
                 .map(expense -> safeAmount(expense.getAmount()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal taxCollected = taxes.stream()
-                .map(tax -> safeAmount(tax.getAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal taxableRevenue = taxes.stream()
                 .map(tax -> safeAmount(tax.getTaxableAmount()))
@@ -189,7 +192,7 @@ public class FinanceService {
                 .map(item -> item.getLineCost() != null ? item.getLineCost() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Gross Profit = Net Revenue − COGS  (NOT netRevenue − tax)
+        // Gross Profit = Net Revenue (which now correctly excludes tax) − COGS
         BigDecimal grossProfit = netRevenue.subtract(cogs);
 
         return new FinanceTotals(

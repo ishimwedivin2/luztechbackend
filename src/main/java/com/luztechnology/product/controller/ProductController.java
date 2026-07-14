@@ -74,6 +74,7 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(productService.toDto(productService.getProductById(id))));
     }
 
+
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
     public ResponseEntity<ApiResponse<Product>> createProduct(@RequestBody Product product) {
@@ -86,6 +87,7 @@ public class ProductController {
             @RequestParam("name") String name,
             @RequestParam("description") String description,
             @RequestParam("price") java.math.BigDecimal price,
+            @RequestParam(value = "costPrice", required = false) java.math.BigDecimal costPrice,
             @RequestParam("sku") String sku,
             @RequestParam("status") ProductStatus status,
             @RequestParam(value = "categoryId", required = false) UUID categoryId,
@@ -100,6 +102,7 @@ public class ProductController {
                 .name(name)
                 .description(description)
                 .price(price)
+                .costPrice(costPrice != null ? costPrice : java.math.BigDecimal.ZERO)
                 .sku(sku)
                 .status(status)
                 .taxRate(taxRateId == null ? null : TaxRate.builder().build())
