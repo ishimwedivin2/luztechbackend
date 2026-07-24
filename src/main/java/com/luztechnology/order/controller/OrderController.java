@@ -2,6 +2,7 @@ package com.luztechnology.order.controller;
 
 import com.luztechnology.common.dto.ApiResponse;
 import com.luztechnology.order.dto.CustomerOrderResponse;
+import com.luztechnology.order.dto.OrderSummaryResponse;
 import com.luztechnology.order.dto.OrderTrackingResponse;
 import com.luztechnology.order.entity.Order;
 import com.luztechnology.order.entity.OrderStatus;
@@ -25,7 +26,7 @@ public class OrderController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE', 'SUPPORT_AGENT')")
-    public ResponseEntity<ApiResponse<List<Order>>> getAllOrders(
+    public ResponseEntity<ApiResponse<List<OrderSummaryResponse>>> getAllOrders(
             @RequestParam(required = false) String customerName,
             @RequestParam(required = false) String productName,
             @RequestParam(required = false) String customerEmail,
@@ -34,7 +35,7 @@ public class OrderController {
             @RequestParam(required = false) LocalDate date) {
         LocalDateTime startDate = date != null ? date.atStartOfDay() : null;
         LocalDateTime endDate = date != null ? date.plusDays(1).atStartOfDay() : null;
-        return ResponseEntity.ok(ApiResponse.success(orderService.searchOrders(
+        return ResponseEntity.ok(ApiResponse.success(orderService.searchOrderSummaries(
                 customerName,
                 productName,
                 customerEmail,

@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Data
@@ -23,4 +24,8 @@ public class OrderSummaryResponse {
     private String shippingVillage;
     private String deliveryInstructions;
     private String deliveryPhoneNumber;
+    // Flat customer fields — avoids serialising the full User entity (lazy-load issues)
+    private String customerName;
+    private String customerEmail;
+    private LocalDateTime createdAt;
 }

@@ -12,6 +12,10 @@ import com.luztechnology.order.repository.ShipmentRepository;
 import com.luztechnology.order.service.OrderService;
 import com.luztechnology.order.service.ShipmentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -102,7 +106,24 @@ public class FulfillmentService {
 
     @Transactional(readOnly = true)
     public FulfillmentResponse getFulfillment(UUID orderId) {
-        return toResponse(getFulfillmentForOrder(orderId));
+        // Return null (200 with null data) when fulfillment has not been started yet
+        // so the frontend can show the "start fulfillment" panel instead of a 500 error
+        return fulfillmentOrderRepository.findByOrderId(orderId)
+                .map(this::toResponse)
+                .orElse(null);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<FulfillmentResponse> getPendingFulfillments(int page, int size, String status) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        Page<FulfillmentOrder> fulfillments;
+        if (status != null && !status.isBlank()) {
+            fulfillments = fulfillmentOrderRepository.findByStatus(status, pageable);
+        } else {
+            // Exclude completed fulfillments by default so the queue shows active work
+            fulfillments = fulfillmentOrderRepository.findByStatusNot(COMPLETED, pageable);
+        }
+        return fulfillments.map(this::toResponse);
     }
 
     private FulfillmentOrder getFulfillmentForOrder(UUID orderId) {
@@ -114,7 +135,8 @@ public class FulfillmentService {
         if (order.getStatus() == OrderStatus.CANCELLED
                 || order.getStatus() == OrderStatus.REFUNDED
                 || order.getStatus() == OrderStatus.RETURNED
-                || order.getStatus() == OrderStatus.DELIVERED) {
+                || order.getStatus() == OrderStatus.DELIVERED
+                || order.getStatus() == OrderStatus.FULFILLED) {
             throw new IllegalStateException("Order cannot be fulfilled while status is " + order.getStatus());
         }
         if (order.getStatus() != OrderStatus.PAID
@@ -142,11 +164,22 @@ public class FulfillmentService {
     private FulfillmentResponse toResponse(FulfillmentOrder fulfillment) {
         Order order = fulfillment.getOrder();
         Shipment shipment = fulfillment.getShipment();
+
+        String customerName = null;
+        if (order.getCustomer() != null) {
+            String first = order.getCustomer().getFirstName() != null ? order.getCustomer().getFirstName() : "";
+            String last  = order.getCustomer().getLastName()  != null ? order.getCustomer().getLastName()  : "";
+            customerName = (first + " " + last).trim();
+            if (customerName.isEmpty()) customerName = order.getCustomer().getEmail();
+        }
+
         return FulfillmentResponse.builder()
                 .fulfillmentId(fulfillment.getId())
                 .orderId(order.getId())
                 .orderNumber(order.getOrderNumber())
                 .orderStatus(order.getStatus())
+                .customerName(customerName)
+                .totalAmount(order.getTotalAmount())
                 .fulfillmentStatus(fulfillment.getStatus())
                 .shipmentId(shipment == null ? null : shipment.getId())
                 .trackingNumber(shipment == null ? null : shipment.getTrackingNumber())
@@ -156,6 +189,7 @@ public class FulfillmentService {
                 .packedAt(fulfillment.getPackedAt())
                 .dispatchedAt(fulfillment.getDispatchedAt())
                 .completedAt(fulfillment.getCompletedAt())
+                .createdAt(fulfillment.getCreatedAt())
                 .build();
     }
 }

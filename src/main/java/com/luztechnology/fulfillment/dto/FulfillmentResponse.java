@@ -4,6 +4,7 @@ import com.luztechnology.order.entity.OrderStatus;
 import lombok.Builder;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -14,6 +15,8 @@ public class FulfillmentResponse {
     private UUID orderId;
     private String orderNumber;
     private OrderStatus orderStatus;
+    private String customerName;
+    private BigDecimal totalAmount;
     private String fulfillmentStatus;
     private UUID shipmentId;
     private String trackingNumber;
@@ -23,4 +26,5 @@ public class FulfillmentResponse {
     private LocalDateTime packedAt;
     private LocalDateTime dispatchedAt;
     private LocalDateTime completedAt;
+    private LocalDateTime createdAt;
 }

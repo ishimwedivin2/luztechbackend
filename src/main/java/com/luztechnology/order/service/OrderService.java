@@ -5,6 +5,7 @@ import com.luztechnology.inventory.service.InventoryService;
 import com.luztechnology.finance.service.TaxService;
 import com.luztechnology.notification.service.MailService;
 import com.luztechnology.order.dto.OrderRequestDTO;
+import com.luztechnology.order.dto.OrderSummaryResponse;
 import com.luztechnology.order.dto.OrderTrackingEventResponse;
 import com.luztechnology.order.dto.OrderTrackingResponse;
 import com.luztechnology.order.entity.Order;
@@ -65,6 +66,56 @@ public class OrderService {
     private final ProductPricingService productPricingService;
 
     @Transactional(readOnly = true)
+    public List<OrderSummaryResponse> searchOrderSummaries(
+            String customerName,
+            String productName,
+            String customerEmail,
+            String orderQuery,
+            OrderStatus status,
+            LocalDateTime startDate,
+            LocalDateTime endDate) {
+        return searchOrders(customerName, productName, customerEmail, orderQuery, status, startDate, endDate)
+                .stream()
+                .map(this::toOrderSummaryResponse)
+                .collect(Collectors.toList());
+    }
+
+    private OrderSummaryResponse toOrderSummaryResponse(Order o) {
+        String custName = null;
+        String custEmail = null;
+        if (o.getCustomer() != null) {
+            String first = o.getCustomer().getFirstName() != null ? o.getCustomer().getFirstName() : "";
+            String last  = o.getCustomer().getLastName()  != null ? o.getCustomer().getLastName()  : "";
+            custName  = (first + " " + last).trim();
+            if (custName.isEmpty()) custName = o.getCustomer().getEmail();
+            custEmail = o.getCustomer().getEmail();
+        } else {
+            // If customer is null, use order number as fallback
+            custName = "Order #" + (o.getOrderNumber() != null ? o.getOrderNumber() : o.getId().toString().substring(0, 8));
+            custEmail = "";
+        }
+        return OrderSummaryResponse.builder()
+                .id(o.getId())
+                .orderNumber(o.getOrderNumber())
+                .status(o.getStatus() != null ? o.getStatus().name() : null)
+                .totalAmount(o.getTotalAmount())
+                .taxRate(o.getTaxRate())
+                .paymentMethod(o.getPaymentMethod())
+                .shippingAddress(o.getShippingAddress())
+                .shippingProvince(o.getShippingProvince())
+                .shippingDistrict(o.getShippingDistrict())
+                .shippingSector(o.getShippingSector())
+                .shippingCell(o.getShippingCell())
+                .shippingVillage(o.getShippingVillage())
+                .deliveryInstructions(o.getDeliveryInstructions())
+                .deliveryPhoneNumber(o.getDeliveryPhoneNumber())
+                .customerName(custName)
+                .customerEmail(custEmail)
+                .createdAt(o.getCreatedAt())
+                .build();
+    }
+
+    @Transactional(readOnly = true)
     public List<Order> getAllOrders() {
         return orderRepository.findAllByOrderByCreatedAtDesc();
     }
@@ -82,12 +133,13 @@ public class OrderService {
         String normalizedProductName = blankToNull(productName);
         String normalizedCustomerEmail = blankToNull(customerEmail);
         String normalizedOrderQuery = blankToNull(orderQuery);
+        String statusStr = status != null ? status.name() : null;
 
         if (normalizedCustomerName == null
                 && normalizedProductName == null
                 && normalizedCustomerEmail == null
                 && normalizedOrderQuery == null
-                && status == null
+                && statusStr == null
                 && startDate == null
                 && endDate == null) {
             return getAllOrders();
@@ -98,7 +150,7 @@ public class OrderService {
                 normalizedProductName,
                 normalizedCustomerEmail,
                 normalizedOrderQuery,
-                status,
+                statusStr,
                 startDate,
                 endDate);
     }
@@ -576,6 +628,7 @@ public class OrderService {
             case CREATED -> "Order created";
             case PAID -> "Payment confirmed";
             case PROCESSING -> "Order is being prepared";
+            case FULFILLED -> "Order fulfilled and ready for shipment";
             case SHIPPED -> "Order has shipped";
             case DELIVERED -> "Order delivered";
             case CANCELLED -> "Order cancelled";
